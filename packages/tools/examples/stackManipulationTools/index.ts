@@ -129,14 +129,19 @@ async function run() {
   // hook instead of mouse buttons, it does not need to assign any mouse button.
   toolGroup.setToolActive(StackScrollMouseWheelTool.toolName);
 
-  // Get Cornerstone imageIds and fetch metadata into RAM
+  // DEBUG: tags updated
   const imageIds = await createImageIdsAndCacheMetaData({
-    StudyInstanceUID:
-      '1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463',
-    SeriesInstanceUID:
-      '1.3.6.1.4.1.14519.5.2.1.7009.2403.226151125820845824875394858561',
-    wadoRsRoot: 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
+    StudyInstanceUID: '2.25.232704420736447710317909004159492840763',
+    SeriesInstanceUID: '2.25.16992883200578135914239363565496792012',
+    wadoRsRoot: 'http://localhost/dicom-web',
   });
+
+  // DEBUG: original tags
+  // const imageIds = await createImageIdsAndCacheMetaData({
+  //   StudyInstanceUID: '2.25.327308921186512783713113236483428654740',
+  //   SeriesInstanceUID: '2.25.302365951955339755272633729578993753141',
+  //   wadoRsRoot: 'http://localhost/dicom-web',
+  // });
 
   // Instantiate a rendering engine
   const renderingEngineId = 'myRenderingEngine';
@@ -164,7 +169,9 @@ async function run() {
   );
 
   // Define a stack containing a single image
-  const stack = [imageIds[0], imageIds[1], imageIds[2]];
+  const stack = imageIds.filter((imageId) =>
+    imageId.includes('2.25.229772184238244600265050724913946842273')
+  );
 
   // Set the stack on the viewport
   viewport.setStack(stack);

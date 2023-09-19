@@ -11,7 +11,7 @@ import {
   PixelDataTypedArray,
 } from '../types';
 import convertColorSpace from './convertColorSpace';
-import decodeImageFrame from './decodeImageFrame';
+import decodeImageFrame from './decodeImageFrame-noWorkers';
 import getImageFrame from './getImageFrame';
 import getScalingParameters from './getScalingParameters';
 import { getOptions } from './internal/options';
@@ -392,14 +392,20 @@ function createImage(
         image.windowCenter = 128;
       }
 
+      const updateWWWC =
+        image.windowCenter === undefined ||
+        image.windowWidth === undefined ||
+        image.windowCenter === image.windowWidth;
+
       // set the ww/wc to cover the dynamic range of the image if no values are supplied
-      if (image.windowCenter === undefined || image.windowWidth === undefined) {
+      if (updateWWWC) {
         const minVoi = image.imageFrame.minAfterScale;
         const maxVoi = image.imageFrame.maxAfterScale;
 
         image.windowWidth = maxVoi - minVoi;
         image.windowCenter = (maxVoi + minVoi) / 2;
       }
+
       resolve(image);
     }, reject);
   });

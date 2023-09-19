@@ -174,7 +174,7 @@ function resetUseCPURendering(): void {
  *
  */
 function getShouldUseCPURendering(): boolean {
-  return config.rendering.useCPURendering;
+  return true; // config.rendering.useCPURendering;
 }
 
 function setUseSharedArrayBuffer(mode: SharedArrayBufferModes | boolean): void {
