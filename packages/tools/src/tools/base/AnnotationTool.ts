@@ -195,6 +195,7 @@ abstract class AnnotationTool extends AnnotationDisplayTool {
     canvasCoords: Types.Point2,
     proximity: number
   ): ToolHandle | undefined {
+    // console.log('>>>>> ---[ getHandleNearImagePoint ]------------------------');
     const enabledElement = getEnabledElement(element);
     const { viewport } = enabledElement;
 
@@ -229,6 +230,15 @@ abstract class AnnotationTool extends AnnotationDisplayTool {
 
       const near =
         vec2.distance(canvasCoords, annotationCanvasCoordinate) < proximity;
+
+      // eslint-disable-next-line
+      // console.log(`>>>>> handle[${i}] :: mouse ::`, canvasCoords);
+      // eslint-disable-next-line
+      // console.log(`>>>>> handle[${i}] :: canvas ::`, point);
+      // eslint-disable-next-line
+      // console.log(`>>>>> handle[${i}] :: world ::`, annotationCanvasCoordinate);
+      // // eslint-disable-next-line
+      // console.log(`>>>>> handle[${i}] :: dist ::`, vec2.distance(canvasCoords, annotationCanvasCoordinate));
 
       if (near === true) {
         data.handles.activeHandleIndex = i;

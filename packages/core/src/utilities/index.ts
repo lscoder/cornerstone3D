@@ -9,6 +9,7 @@ import getMinMax from './getMinMax';
 import getRuntimeId from './getRuntimeId';
 import imageIdToURI from './imageIdToURI';
 import calibratedPixelSpacingMetadataProvider from './calibratedPixelSpacingMetadataProvider';
+import createGuid from './createGuid';
 import isEqual from './isEqual';
 import isOpposite from './isOpposite';
 import createUint8SharedArray from './createUint8SharedArray';
@@ -65,6 +66,7 @@ export {
   planar,
   getMinMax,
   getRuntimeId,
+  createGuid,
   isEqual,
   isOpposite,
   createFloat32SharedArray,

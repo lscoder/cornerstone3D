@@ -29,11 +29,12 @@ const {
   CobbAngleTool,
   ToolGroupManager,
   ArrowAnnotateTool,
+  AdvancedMagnifyTool,
   Enums: csToolsEnums,
 } = cornerstoneTools;
 
 const { ViewportType, Events } = Enums;
-const { MouseBindings } = csToolsEnums;
+const { MouseBindings, KeyboardBindings } = csToolsEnums;
 const renderingEngineId = 'myRenderingEngine';
 const viewportId = 'CT_STACK';
 
@@ -202,6 +203,7 @@ async function run() {
   cornerstoneTools.addTool(AngleTool);
   cornerstoneTools.addTool(CobbAngleTool);
   cornerstoneTools.addTool(ArrowAnnotateTool);
+  cornerstoneTools.addTool(AdvancedMagnifyTool);
 
   // Define a tool group, which defines how mouse events map to tool commands for
   // Any viewport using the group
@@ -217,9 +219,11 @@ async function run() {
   toolGroup.addTool(AngleTool.toolName);
   toolGroup.addTool(CobbAngleTool.toolName);
   toolGroup.addTool(ArrowAnnotateTool.toolName);
+  toolGroup.addTool(AdvancedMagnifyTool.toolName);
 
   // Set the initial state of the tools, here we set one tool active on left click.
   // This means left click will draw that tool.
+  // toolGroup.setToolActive(LengthTool.toolName, {
   toolGroup.setToolActive(LengthTool.toolName, {
     bindings: [
       {
@@ -227,6 +231,25 @@ async function run() {
       },
     ],
   });
+
+  toolGroup.setToolActive(EllipticalROITool.toolName, {
+    bindings: [
+      {
+        mouseButton: MouseBindings.Primary, // Left Click
+        modifierKey: KeyboardBindings.Shift,
+      },
+    ],
+  });
+
+  toolGroup.setToolActive(AdvancedMagnifyTool.toolName, {
+    bindings: [
+      {
+        mouseButton: MouseBindings.Primary, // Left Click
+        modifierKey: KeyboardBindings.Ctrl,
+      },
+    ],
+  });
+
   // We set all the other tools passive here, this means that any state is rendered, and editable
   // But aren't actively being drawn (see the toolModes example for information)
   toolGroup.setToolPassive(ProbeTool.toolName);
@@ -241,10 +264,10 @@ async function run() {
   // Get Cornerstone imageIds and fetch metadata into RAM
   const imageIds = await createImageIdsAndCacheMetaData({
     StudyInstanceUID:
-      '1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463',
+      '1.3.6.1.4.1.9328.50.17.106165719864837115866539427306648068553',
     SeriesInstanceUID:
-      '1.3.6.1.4.1.14519.5.2.1.7009.2403.226151125820845824875394858561',
-    wadoRsRoot: 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb',
+      '1.3.6.1.4.1.9328.50.17.249836005616032823097408901947312961772',
+    wadoRsRoot: 'http://localhost/dicom-web',
   });
 
   // Instantiate a rendering engine

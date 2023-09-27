@@ -13,6 +13,9 @@ const eventName = Events.MOUSE_MOVE;
  */
 function mouseMoveListener(evt: MouseEvent) {
   const element = <HTMLDivElement>evt.currentTarget;
+  // const element = <HTMLDivElement>evt.target;
+  // console.log('>>>>> target: ', evt.target, evt.currentTarget);
+  // console.log('>>>>> target equals: ', evt.target === evt.currentTarget);
   const enabledElement = getEnabledElement(element);
   const { renderingEngineId, viewportId } = enabledElement;
 
@@ -27,7 +30,13 @@ function mouseMoveListener(evt: MouseEvent) {
     event: evt,
   };
 
-  triggerEvent(element, eventName, eventDetail);
+  const consumed = !triggerEvent(element, eventName, eventDetail);
+
+  // Events.MOUSE_MOVE was consumed, thus no other listener should handle this event.
+  if (consumed) {
+    evt.stopImmediatePropagation();
+    evt.preventDefault();
+  }
 }
 
 export default mouseMoveListener;
