@@ -144,6 +144,9 @@ class AdvancedMagnifyTool extends AnnotationTool {
     const canvasPos = currentPoints.canvas;
     const { magnifyRadius } = this.configuration;
 
+    console.log('>>>>> create :: canvas:', canvasPos);
+    console.log('>>>>> create :: world:', worldPos);
+
     const worldHandlesPoints = this._getWorldHandlesPoints(
       viewport,
       canvasPos,
@@ -163,7 +166,7 @@ class AdvancedMagnifyTool extends AnnotationTool {
     const FrameOfReferenceUID = viewport.getFrameOfReferenceUID();
 
     const magnifyViewportId = this.magnifyViewportManager.createViewport({
-      enabledElement,
+      parentEnabledElement: enabledElement,
       referencedImageId,
       position: canvasPos,
       radius: magnifyRadius,
@@ -380,6 +383,8 @@ class AdvancedMagnifyTool extends AnnotationTool {
   };
 
   _dragDrawCallback = (evt: EventTypes.InteractionEventType): void => {
+    console.log('>>>>> dragDrawCallback');
+
     this.isDrawing = true;
     const eventDetail = evt.detail;
     const { element, deltaPoints } = eventDetail;
@@ -670,11 +675,12 @@ class AdvancedMagnifyTool extends AnnotationTool {
         dataId
       );
 
-      this.magnifyViewportManager.setViewportPosition(
-        magnifyViewportId,
-        center
-      );
-      this.magnifyViewportManager.setViewportRadius(magnifyViewportId, radius);
+      const magnifyViewport =
+        this.magnifyViewportManager.getViewport(magnifyViewportId);
+
+      magnifyViewport.position = center;
+      magnifyViewport.radius = radius;
+      magnifyViewport.update();
 
       renderStatus = true;
     }

@@ -80,8 +80,6 @@ export interface LengthAnnotation extends Annotation {
 
 export interface AdvancedMagnifyAnnotation extends Annotation {
   data: {
-    // center: Types.Point3;
-    // radius: number;
     magnifyViewportId: string;
     handles: {
       points: Types.Point3[]; // [top, right, bottom, left]

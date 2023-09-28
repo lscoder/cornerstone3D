@@ -19,6 +19,7 @@ console.warn(
 );
 
 const {
+  WindowLevelTool,
   LengthTool,
   ProbeTool,
   RectangleROITool,
@@ -194,6 +195,7 @@ async function run() {
   await initDemo();
 
   // Add tools to Cornerstone3D
+  cornerstoneTools.addTool(WindowLevelTool);
   cornerstoneTools.addTool(LengthTool);
   cornerstoneTools.addTool(ProbeTool);
   cornerstoneTools.addTool(RectangleROITool);
@@ -210,6 +212,7 @@ async function run() {
   const toolGroup = ToolGroupManager.createToolGroup(toolGroupId);
 
   // Add the tools to the tool group
+  toolGroup.addTool(WindowLevelTool.toolName);
   toolGroup.addTool(LengthTool.toolName);
   toolGroup.addTool(ProbeTool.toolName);
   toolGroup.addTool(RectangleROITool.toolName);
@@ -232,11 +235,10 @@ async function run() {
     ],
   });
 
-  toolGroup.setToolActive(EllipticalROITool.toolName, {
+  toolGroup.setToolActive(WindowLevelTool.toolName, {
     bindings: [
       {
-        mouseButton: MouseBindings.Primary, // Left Click
-        modifierKey: KeyboardBindings.Shift,
+        mouseButton: MouseBindings.Secondary, // Right Click
       },
     ],
   });
@@ -248,6 +250,15 @@ async function run() {
         modifierKey: KeyboardBindings.Ctrl,
       },
     ],
+    toolOptions: {
+      showZoomLevelDropdown: {
+        bindings: [
+          {
+            keyboardKey: KeyboardBindings.Shift,
+          },
+        ],
+      },
+    },
   });
 
   // We set all the other tools passive here, this means that any state is rendered, and editable
