@@ -1,4 +1,3 @@
-/* eslint-disable */
 import { AnnotationTool } from './base';
 
 import {
@@ -23,7 +22,7 @@ import {
   drawHandles as drawHandlesSvg,
 } from '../drawingSvg';
 import { state } from '../store';
-import { Events } from '../enums';
+import { Events, MouseBindings, KeyboardBindings } from '../enums';
 import { getViewportIdsWithToolToRender } from '../utilities/viewportFilters';
 import getWorldWidthAndHeightFromTwoPoints from '../utilities/planar/getWorldWidthAndHeightFromTwoPoints';
 import {
@@ -85,11 +84,103 @@ class AdvancedMagnifyTool extends AnnotationTool {
         shadow: true,
         magnifyZoomFactor: 2.5,
         magnifyRadius: 125, // px
+        magnifyZoomFactorList: [2.5, 3, 3.5, 4, 4.5, 5],
+        actions: [
+          {
+            method: 'showZoomFactorsList',
+            bindings: [
+              {
+                mouseButton: MouseBindings.Secondary,
+                modifierKey: KeyboardBindings.Shift,
+              },
+            ],
+          },
+        ],
       },
     }
   ) {
     super(toolProps, defaultToolProps);
     this.magnifyViewportManager = AdvancedMagnifyViewportManager.getInstance();
+  }
+
+  _getZoomFactorsListDropdown(currentZoomFactor, onChangeCallback) {
+    const { magnifyZoomFactorList } = this.configuration;
+    const dropdown = document.createElement('select');
+
+    dropdown.size = 5;
+    Object.assign(dropdown.style, {
+      width: '50px',
+      position: 'absolute',
+    });
+
+    ['mousedown', 'mouseup', 'mousemove', 'click'].forEach((eventName) => {
+      dropdown.addEventListener(eventName, (evt) => evt.stopPropagation());
+    });
+
+    dropdown.addEventListener('change', (evt) => {
+      evt.stopPropagation();
+      onChangeCallback(dropdown.value);
+    });
+
+    dropdown.addEventListener('keydown', (evt) => {
+      const shouldCancel =
+        (evt.keyCode ?? evt.which === 27) ||
+        evt.key?.toLowerCase() === 'escape';
+
+      if (shouldCancel) {
+        evt.stopPropagation();
+        onChangeCallback();
+      }
+    });
+
+    magnifyZoomFactorList.forEach((zoomFactor) => {
+      const option = document.createElement('option');
+
+      option.label = zoomFactor;
+      option.title = `Zoom factor ${zoomFactor.toFixed(1)}`;
+      option.value = zoomFactor;
+      option.defaultSelected = zoomFactor === currentZoomFactor;
+
+      dropdown.add(option);
+    });
+
+    return dropdown;
+  }
+
+  // Basic dropdown component that allows the user to select a different zoom factor.
+  // configurations.actions may be changed to use a customized dropdown.
+  showZoomFactorsList(
+    evt: EventTypes.InteractionEventType,
+    annotation: AdvancedMagnifyAnnotation
+  ) {
+    const { element, currentPoints } = evt.detail;
+    const enabledElement = getEnabledElement(element);
+    const { viewport } = enabledElement;
+    const { canvas: canvasPoint } = currentPoints;
+    const viewportElement = element.querySelector(':scope .viewport-element');
+    const currentZoomFactor = annotation.data.zoomFactor;
+    const remove = () => dropdown.parentElement.removeChild(dropdown);
+
+    const dropdown = this._getZoomFactorsListDropdown(
+      currentZoomFactor,
+      (newZoomFactor) => {
+        if (newZoomFactor !== undefined) {
+          annotation.data.zoomFactor = Number.parseFloat(newZoomFactor);
+          annotation.invalidated = true;
+        }
+
+        remove();
+        viewport.render();
+      }
+    );
+
+    Object.assign(dropdown.style, {
+      left: `${canvasPoint[0]}px`,
+      top: `${canvasPoint[1]}px`,
+    });
+
+    viewportElement.appendChild(dropdown);
+    dropdown.focus();
   }
 
   _getWorldHandlesPoints = (
@@ -165,7 +256,7 @@ class AdvancedMagnifyTool extends AnnotationTool {
 
     const FrameOfReferenceUID = viewport.getFrameOfReferenceUID();
 
-    const magnifyViewportId = this.magnifyViewportManager.createViewport({
+    const { magnifyViewportId } = this.magnifyViewportManager.createViewport({
       parentEnabledElement: enabledElement,
       referencedImageId,
       position: canvasPos,
@@ -186,8 +277,7 @@ class AdvancedMagnifyTool extends AnnotationTool {
       },
       data: {
         magnifyViewportId,
-        // center: [...worldPos],
-        // radius: worldRadius,
+        zoomFactor: this.configuration.magnifyZoomFactor,
         handles: {
           points: worldHandlesPoints,
           activeHandleIndex: null,
@@ -605,7 +695,7 @@ class AdvancedMagnifyTool extends AnnotationTool {
     for (let i = 0; i < annotations.length; i++) {
       const annotation = annotations[i] as AdvancedMagnifyAnnotation;
       const { annotationUID, data } = annotation;
-      const { magnifyViewportId, handles } = data;
+      const { magnifyViewportId, zoomFactor, handles } = data;
       const { points, activeHandleIndex } = handles;
 
       styleSpecifier.annotationUID = annotationUID;
@@ -678,8 +768,11 @@ class AdvancedMagnifyTool extends AnnotationTool {
       const magnifyViewport =
         this.magnifyViewportManager.getViewport(magnifyViewportId);
 
+      console.log('zoom: ', annotation.data.zoomFactor);
+
       magnifyViewport.position = center;
       magnifyViewport.radius = radius;
+      magnifyViewport.zoomFactor = zoomFactor;
       magnifyViewport.update();
 
       renderStatus = true;

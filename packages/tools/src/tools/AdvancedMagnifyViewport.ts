@@ -13,8 +13,8 @@ class AdvancedMagnifyViewport {
   private _parentEnabledElement: Types.IEnabledElement;
   private _enabledElement: Types.IEnabledElement;
   private _referencedImageId: string;
-  private _radius: number;
   private _position: Types.Point2;
+  private _radius: number;
   private _zoomFactor: number;
   private _visible: boolean;
   private _isViewportReady: boolean;
@@ -35,8 +35,8 @@ class AdvancedMagnifyViewport {
     this._referencedImageId = referencedImageId;
     this._parentEnabledElement = parentEnabledElement;
     this._enabledElement = null;
-    this._radius = radius;
     this._position = position;
+    this._radius = radius;
     this._zoomFactor = 2.5;
     this._visible = true;
     this._isViewportReady = false;
@@ -74,6 +74,17 @@ class AdvancedMagnifyViewport {
     }
   }
 
+  public get zoomFactor(): number {
+    return this._zoomFactor;
+  }
+
+  public set zoomFactor(zoomFactor: number) {
+    if (this._zoomFactor !== zoomFactor) {
+      this._zoomFactor = zoomFactor;
+      this._invalidated = true;
+    }
+  }
+
   public get visible(): boolean {
     return this._visible;
   }
@@ -89,9 +100,11 @@ class AdvancedMagnifyViewport {
   ) => {
     const { canvas } = parentEnabledElement.viewport;
     const parentNode = canvas.parentNode;
-    const svgNode = parentNode.querySelector(':scope > .svg-layer');
 
-    parentNode.insertBefore(magnifyElement, svgNode);
+    // const svgNode = parentNode.querySelector(':scope > .svg-layer');
+    // // parentNode.insertBefore(magnifyElement, svgNode);
+
+    parentNode.appendChild(magnifyElement);
   };
 
   // Children elements need to inherit border-radius otherwise the canvas will
@@ -132,6 +145,25 @@ class AdvancedMagnifyViewport {
     return magnifyElement;
   }
 
+  private _convertZoomFactorToParalellScale(
+    viewport,
+    magnifyViewport,
+    zoomFactor
+  ) {
+    const { parallelScale } = viewport.getCamera();
+    const canvasRatio =
+      magnifyViewport.canvas.offsetWidth / viewport.canvas.offsetWidth;
+
+    return parallelScale * (1 / zoomFactor) * canvasRatio;
+  }
+
+  private _syncToolGroups(parentViewport, magnifyViewport) {
+    // const toolGroup = ToolGroupManager.getToolGroupForViewport(
+    //   viewportId,
+    //   renderingEngineId
+    // );
+  }
+
   // TODO: Implement cloneVolumeViewport
   private _cloneVolumeViewport({
     viewport,
@@ -145,18 +177,6 @@ class AdvancedMagnifyViewport {
     renderingEngine: Types.IRenderingEngine;
   }): Types.IVolumeViewport {
     return null;
-  }
-
-  private _convertZoomFactorToParalellScale(
-    viewport,
-    magnifyViewport,
-    zoomFactor
-  ) {
-    const { parallelScale } = viewport.getCamera();
-    const canvasRatio =
-      magnifyViewport.canvas.offsetWidth / viewport.canvas.offsetWidth;
-
-    return parallelScale * (1 / zoomFactor) * canvasRatio;
   }
 
   private _cloneStackViewport({
@@ -197,7 +217,7 @@ class AdvancedMagnifyViewport {
     const renderingEngine =
       parentViewport.getRenderingEngine() as Types.IRenderingEngine;
 
-    this._cloneStackViewport({
+    const magnifyViewport = this._cloneStackViewport({
       parentViewport,
       magnifyViewportId,
       magnifyElement,
@@ -205,6 +225,7 @@ class AdvancedMagnifyViewport {
       referencedImageId,
     });
 
+    this._syncToolGroups(parentViewport, magnifyViewport);
     this._inheritBorderRadius(magnifyElement);
   }
 
@@ -222,10 +243,6 @@ class AdvancedMagnifyViewport {
   }
 
   private _syncViewportsCameras(parentViewport, magnifyViewport) {
-    // DEBUG (REMOVE)
-    (window as any).parentViewport = parentViewport;
-    (window as any).magnifyViewport = magnifyViewport;
-
     const worldPos = parentViewport.canvasToWorld(this.position);
 
     // Use the original viewport for the base for parallelScale

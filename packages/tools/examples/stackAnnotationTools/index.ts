@@ -250,15 +250,6 @@ async function run() {
         modifierKey: KeyboardBindings.Ctrl,
       },
     ],
-    toolOptions: {
-      showZoomLevelDropdown: {
-        bindings: [
-          {
-            keyboardKey: KeyboardBindings.Shift,
-          },
-        ],
-      },
-    },
   });
 
   // We set all the other tools passive here, this means that any state is rendered, and editable

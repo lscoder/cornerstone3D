@@ -20,6 +20,7 @@ import filterToolsWithAnnotationsForElement from '../../store/filterToolsWithAnn
 import filterMoveableAnnotationTools from '../../store/filterMoveableAnnotationTools';
 import getActiveToolForMouseEvent from '../shared/getActiveToolForMouseEvent';
 import getToolsWithModesForMouseEvent from '../shared/getToolsWithModesForMouseEvent';
+import mouseDownAnnotationAction from './mouseDownAnnotationAction';
 
 const { Active, Passive } = ToolModes;
 
@@ -49,6 +50,12 @@ const { Active, Passive } = ToolModes;
 export default function mouseDown(evt: EventTypes.MouseDownEventType) {
   // If a tool has locked the current state it is dealing with an interaction within its own eventLoop.
   if (state.isInteractingWithTool) {
+    return;
+  }
+
+  const actionExecuted = mouseDownAnnotationAction(evt);
+
+  if (actionExecuted) {
     return;
   }
 

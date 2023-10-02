@@ -1,4 +1,3 @@
-import type { Types } from '@cornerstonejs/core';
 import AdvancedMagnifyViewport from './AdvancedMagnifyViewport';
 
 const singletonSymbol = Symbol('AdvancedMagnifyViewportManager');
@@ -23,7 +22,9 @@ class AdvancedMagnifyViewportManager {
     referencedImageId,
     position,
     radius,
-  }): string => {
+  }): {
+    magnifyViewportId: string;
+  } => {
     const magnifyViewport = new AdvancedMagnifyViewport({
       parentEnabledElement,
       referencedImageId,
@@ -31,9 +32,10 @@ class AdvancedMagnifyViewportManager {
       position,
     });
 
-    this._viewports.set(magnifyViewport.viewportId, magnifyViewport);
+    const { viewportId: magnifyViewportId } = magnifyViewport;
+    this._viewports.set(magnifyViewportId, magnifyViewport);
 
-    return magnifyViewport.viewportId;
+    return { magnifyViewportId };
   };
 
   public getViewport(magnifyViewportId: string): AdvancedMagnifyViewport {
