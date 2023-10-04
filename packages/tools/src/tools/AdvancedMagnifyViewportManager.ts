@@ -18,18 +18,20 @@ class AdvancedMagnifyViewportManager {
   }
 
   public createViewport = ({
-    parentEnabledElement,
+    sourceEnabledElement,
     referencedImageId,
     position,
     radius,
+    zoomFactor,
   }): {
     magnifyViewportId: string;
   } => {
     const magnifyViewport = new AdvancedMagnifyViewport({
-      parentEnabledElement,
+      sourceEnabledElement,
       referencedImageId,
       radius,
       position,
+      zoomFactor,
     });
 
     const { viewportId: magnifyViewportId } = magnifyViewport;

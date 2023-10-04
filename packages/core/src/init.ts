@@ -114,22 +114,20 @@ async function init(configuration = config): Promise<boolean> {
     console.log('CornerstoneRender: GPU not detected, using CPU rendering');
     config.rendering.useCPURendering = true;
   } else {
-    console.log('>>>>> core :: getGPUTier');
-    config.gpuTier = { tier: 3 };
-    // config.gpuTier =
-    //   config.gpuTier || (await getGPUTier(config.detectGPUConfig));
-    // console.log(
-    //   'CornerstoneRender: Using detect-gpu to get the GPU benchmark:',
-    //   config.gpuTier
-    // );
-    // if (config.gpuTier.tier < 1) {
-    //   console.log(
-    //     'CornerstoneRender: GPU is not powerful enough, using CPU rendering'
-    //   );
-    //   config.rendering.useCPURendering = true;
-    // } else {
-    //   console.log('CornerstoneRender: using GPU rendering');
-    // }
+    config.gpuTier =
+      config.gpuTier || (await getGPUTier(config.detectGPUConfig));
+    console.log(
+      'CornerstoneRender: Using detect-gpu to get the GPU benchmark:',
+      config.gpuTier
+    );
+    if (config.gpuTier.tier < 1) {
+      console.log(
+        'CornerstoneRender: GPU is not powerful enough, using CPU rendering'
+      );
+      config.rendering.useCPURendering = true;
+    } else {
+      console.log('CornerstoneRender: using GPU rendering');
+    }
   }
 
   setUseSharedArrayBuffer(sharedArrayBufferMode);

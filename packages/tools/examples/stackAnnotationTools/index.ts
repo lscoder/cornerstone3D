@@ -3,10 +3,12 @@ import {
   Types,
   Enums,
   getRenderingEngine,
+  volumeLoader,
 } from '@cornerstonejs/core';
 import {
   initDemo,
   createImageIdsAndCacheMetaData,
+  setCtTransferFunctionForVolumeActor,
   setTitleAndDescription,
   addDropdownToToolbar,
   addButtonToToolbar,
@@ -20,6 +22,7 @@ console.warn(
 
 const {
   WindowLevelTool,
+  StackScrollMouseWheelTool,
   LengthTool,
   ProbeTool,
   RectangleROITool,
@@ -31,6 +34,8 @@ const {
   ToolGroupManager,
   ArrowAnnotateTool,
   AdvancedMagnifyTool,
+  SegmentationDisplayTool,
+  segmentation,
   Enums: csToolsEnums,
 } = cornerstoneTools;
 
@@ -38,6 +43,11 @@ const { ViewportType, Events } = Enums;
 const { MouseBindings, KeyboardBindings } = csToolsEnums;
 const renderingEngineId = 'myRenderingEngine';
 const viewportId = 'CT_STACK';
+const segmentationId = 'SEGMENTATION_ID_1';
+
+const volumeName = 'CT_VOLUME_ID'; // Id of the volume less loader prefix
+const volumeLoaderScheme = 'cornerstoneStreamingImageVolume'; // Loader id which defines which volume loader to use
+const volumeId = `${volumeLoaderScheme}:${volumeName}`; // VolumeId with loader id + volume id
 
 // ======== Set up page ======== //
 setTitleAndDescription(
@@ -54,6 +64,7 @@ element.oncontextmenu = (e) => e.preventDefault();
 element.id = 'cornerstone-element';
 element.style.width = '500px';
 element.style.height = '500px';
+element.style.overflow = 'hidden';
 
 content.appendChild(element);
 
@@ -188,6 +199,71 @@ addButtonToToolbar({
 });
 
 /**
+ * Adds two concentric circles to each axial slice of the demo segmentation.
+ */
+function fillSegmentationWithCircles(segmentationVolume, centerOffset) {
+  const scalarData = segmentationVolume.scalarData;
+
+  let voxelIndex = 0;
+
+  const { dimensions } = segmentationVolume;
+
+  const innerRadius = dimensions[0] / 8;
+  const outerRadius = dimensions[0] / 4;
+
+  const center = [
+    dimensions[0] / 2 + centerOffset[0],
+    dimensions[1] / 2 + centerOffset[1],
+  ];
+
+  for (let z = 0; z < dimensions[2]; z++) {
+    for (let y = 0; y < dimensions[1]; y++) {
+      for (let x = 0; x < dimensions[0]; x++) {
+        const distanceFromCenter = Math.sqrt(
+          (x - center[0]) * (x - center[0]) + (y - center[1]) * (y - center[1])
+        );
+        if (distanceFromCenter < innerRadius) {
+          scalarData[voxelIndex] = 1;
+        } else if (distanceFromCenter < outerRadius) {
+          scalarData[voxelIndex] = 2;
+        }
+
+        voxelIndex++;
+      }
+    }
+  }
+}
+
+async function addSegmentationsToState() {
+  // Create a segmentation of the same resolution as the source data
+  // using volumeLoader.createAndCacheDerivedVolume.
+  const segmentationVolume = await volumeLoader.createAndCacheDerivedVolume(
+    volumeId,
+    {
+      volumeId: segmentationId,
+    }
+  );
+  // Add the segmentations to state
+  segmentation.addSegmentations([
+    {
+      segmentationId: segmentationId,
+      representation: {
+        // The type of segmentation
+        type: csToolsEnums.SegmentationRepresentations.Labelmap,
+        // The actual segmentation data, in the case of labelmap this is a
+        // reference to the source volume of the segmentation.
+        data: {
+          volumeId: segmentationId,
+        },
+      },
+    },
+  ]);
+
+  // Add some data to the segmentations
+  fillSegmentationWithCircles(segmentationVolume, [50, 50]);
+}
+
+/**
  * Runs the demo
  */
 async function run() {
@@ -195,7 +271,11 @@ async function run() {
   await initDemo();
 
   // Add tools to Cornerstone3D
+  cornerstoneTools.addTool(SegmentationDisplayTool);
+
+  // Add tools to Cornerstone3D
   cornerstoneTools.addTool(WindowLevelTool);
+  cornerstoneTools.addTool(StackScrollMouseWheelTool);
   cornerstoneTools.addTool(LengthTool);
   cornerstoneTools.addTool(ProbeTool);
   cornerstoneTools.addTool(RectangleROITool);
@@ -212,7 +292,9 @@ async function run() {
   const toolGroup = ToolGroupManager.createToolGroup(toolGroupId);
 
   // Add the tools to the tool group
+  toolGroup.addTool(SegmentationDisplayTool.toolName);
   toolGroup.addTool(WindowLevelTool.toolName);
+  toolGroup.addTool(StackScrollMouseWheelTool.toolName);
   toolGroup.addTool(LengthTool.toolName);
   toolGroup.addTool(ProbeTool.toolName);
   toolGroup.addTool(RectangleROITool.toolName);
@@ -223,6 +305,8 @@ async function run() {
   toolGroup.addTool(CobbAngleTool.toolName);
   toolGroup.addTool(ArrowAnnotateTool.toolName);
   toolGroup.addTool(AdvancedMagnifyTool.toolName);
+
+  toolGroup.setToolEnabled(SegmentationDisplayTool.toolName);
 
   // Set the initial state of the tools, here we set one tool active on left click.
   // This means left click will draw that tool.
@@ -252,6 +336,10 @@ async function run() {
     ],
   });
 
+  // As the Stack Scroll mouse wheel is a tool using the `mouseWheelCallback`
+  // hook instead of mouse buttons, it does not need to assign any mouse button.
+  toolGroup.setToolActive(StackScrollMouseWheelTool.toolName);
+
   // We set all the other tools passive here, this means that any state is rendered, and editable
   // But aren't actively being drawn (see the toolModes example for information)
   toolGroup.setToolPassive(ProbeTool.toolName);
@@ -264,23 +352,62 @@ async function run() {
   toolGroup.setToolPassive(ArrowAnnotateTool.toolName);
 
   // Get Cornerstone imageIds and fetch metadata into RAM
+  // const imageIds = await createImageIdsAndCacheMetaData({
+  //   StudyInstanceUID:
+  //     '1.3.6.1.4.1.9328.50.17.106165719864837115866539427306648068553',
+  //   SeriesInstanceUID:
+  //     '1.3.6.1.4.1.9328.50.17.249836005616032823097408901947312961772',
+  //   wadoRsRoot: 'http://localhost/dicom-web',
+  // });
+
   const imageIds = await createImageIdsAndCacheMetaData({
-    StudyInstanceUID:
-      '1.3.6.1.4.1.9328.50.17.106165719864837115866539427306648068553',
-    SeriesInstanceUID:
-      '1.3.6.1.4.1.9328.50.17.249836005616032823097408901947312961772',
+    StudyInstanceUID: '1.2.840.113619.2.358.3.2644888476.772.1464857645.584',
+    SeriesInstanceUID: '1.2.840.113619.2.358.3.2644888476.772.1464857645.591',
     wadoRsRoot: 'http://localhost/dicom-web',
   });
 
   // Instantiate a rendering engine
   const renderingEngine = new RenderingEngine(renderingEngineId);
 
-  // Create a stack viewport
+  // --[ Stack Viewport - BEGIN ]-----------------------------------------------
+
+  // // Create a stack viewport
+  // const viewportInput = {
+  //   viewportId,
+  //   type: ViewportType.STACK,
+  //   element,
+  //   defaultOptions: {
+  //     background: <Types.Point3>[0.2, 0, 0.2],
+  //   },
+  // };
+
+  // renderingEngine.enableElement(viewportInput);
+
+  // // Set the tool group on the viewport
+  // toolGroup.addViewport(viewportId, renderingEngineId);
+
+  // // Get the stack viewport that was created
+  // const viewport = <Types.IStackViewport>(
+  //   renderingEngine.getViewport(viewportId)
+  // );
+
+  // // Define a stack containing a single image
+  // const stack = imageIds;
+
+  // // Set the stack on the viewport
+  // viewport.setStack(stack);
+
+  // --[ Stack Viewport - END ]-------------------------------------------------
+
+  // --[ Volume Viewport - BEGIN ]----------------------------------------------
+
+  const viewportId = 'CT_SAGITTAL_STACK';
   const viewportInput = {
     viewportId,
-    type: ViewportType.STACK,
+    type: ViewportType.ORTHOGRAPHIC,
     element,
     defaultOptions: {
+      orientation: Enums.OrientationAxis.AXIAL,
       background: <Types.Point3>[0.2, 0, 0.2],
     },
   };
@@ -291,15 +418,35 @@ async function run() {
   toolGroup.addViewport(viewportId, renderingEngineId);
 
   // Get the stack viewport that was created
-  const viewport = <Types.IStackViewport>(
+  const viewport = <Types.IVolumeViewport>(
     renderingEngine.getViewport(viewportId)
   );
 
-  // Define a stack containing a single image
-  const stack = [imageIds[0]];
+  // Define a volume in memory
+  const volume = await volumeLoader.createAndCacheVolume(volumeId, {
+    imageIds,
+  });
 
-  // Set the stack on the viewport
-  viewport.setStack(stack);
+  // Add some segmentations based on the source data volume
+  await addSegmentationsToState();
+
+  // Set the volume to load
+  volume.load();
+
+  // Set the volume on the viewport
+  await viewport.setVolumes([
+    { volumeId, callback: setCtTransferFunctionForVolumeActor },
+  ]);
+
+  // Add the segmentation representations to toolgroup1
+  await segmentation.addSegmentationRepresentations(toolGroupId, [
+    {
+      segmentationId,
+      type: csToolsEnums.SegmentationRepresentations.Labelmap,
+    },
+  ]);
+
+  // --[ Volume Viewport - END ]------------------------------------------------
 
   // Render the image
   viewport.render();

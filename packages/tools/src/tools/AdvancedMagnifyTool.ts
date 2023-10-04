@@ -233,10 +233,10 @@ class AdvancedMagnifyTool extends AnnotationTool {
     const { viewport, renderingEngine } = enabledElement;
     const worldPos = currentPoints.world;
     const canvasPos = currentPoints.canvas;
-    const { magnifyRadius } = this.configuration;
+    const { magnifyRadius, magnifyZoomFactor } = this.configuration;
 
-    console.log('>>>>> create :: canvas:', canvasPos);
-    console.log('>>>>> create :: world:', worldPos);
+    console.log('>>>>> add :: canvas:', canvasPos);
+    console.log('>>>>> add :: world:', worldPos);
 
     const worldHandlesPoints = this._getWorldHandlesPoints(
       viewport,
@@ -257,10 +257,11 @@ class AdvancedMagnifyTool extends AnnotationTool {
     const FrameOfReferenceUID = viewport.getFrameOfReferenceUID();
 
     const { magnifyViewportId } = this.magnifyViewportManager.createViewport({
-      parentEnabledElement: enabledElement,
+      sourceEnabledElement: enabledElement,
       referencedImageId,
       position: canvasPos,
       radius: magnifyRadius,
+      zoomFactor: magnifyZoomFactor,
     });
 
     console.log('>>>>> create :: magnifyViewportId:', magnifyViewportId);
@@ -298,12 +299,10 @@ class AdvancedMagnifyTool extends AnnotationTool {
       // centerCanvas: canvasPos,
       newAnnotation: true,
     };
+
     this._activateDraw(element);
-
     hideElementCursor(element);
-
     evt.preventDefault();
-
     triggerAnnotationRenderForViewportIds(renderingEngine, viewportIdsToRender);
 
     return annotation;
@@ -767,8 +766,6 @@ class AdvancedMagnifyTool extends AnnotationTool {
 
       const magnifyViewport =
         this.magnifyViewportManager.getViewport(magnifyViewportId);
-
-      console.log('zoom: ', annotation.data.zoomFactor);
 
       magnifyViewport.position = center;
       magnifyViewport.radius = radius;
