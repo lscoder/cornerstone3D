@@ -37,6 +37,7 @@ function enable(element: HTMLDivElement): void {
   // Prevent handlers from being attached multiple times
   disable(element);
 
+  // console.log('>>>>> event :: adding listeners (cornerstone)', element);
   element.addEventListener('dblclick', mouseDoubleClickListener);
   element.addEventListener('mousedown', mouseDownListener);
   element.addEventListener('mousemove', mouseMoveListener);

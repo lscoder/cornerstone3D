@@ -236,6 +236,8 @@ class LengthTool extends AnnotationTool {
     const canvasPoint1 = viewport.worldToCanvas(point1);
     const canvasPoint2 = viewport.worldToCanvas(point2);
 
+    // console.log('>>>>> isPointNearTool ::', viewport.id);
+
     const line = {
       start: {
         x: canvasPoint1[0],
@@ -266,6 +268,8 @@ class LengthTool extends AnnotationTool {
   ): void => {
     const eventDetail = evt.detail;
     const { element } = eventDetail;
+    // eslint-disable-next-line
+    // console.log(`>>>>> toolSelectedCallback :: element (${element.dataset.viewportUid}):`, evt);
 
     annotation.highlighted = true;
 
@@ -285,6 +289,8 @@ class LengthTool extends AnnotationTool {
     hideElementCursor(element);
 
     const enabledElement = getEnabledElement(element);
+    // eslint-disable-next-line
+    // console.log(`>>>>> toolSelectedCallback :: enabledElement:`, enabledElement);
     const { renderingEngine } = enabledElement;
 
     triggerAnnotationRenderForViewportIds(renderingEngine, viewportIdsToRender);
@@ -387,6 +393,9 @@ class LengthTool extends AnnotationTool {
     const eventDetail = evt.detail;
     const { element } = eventDetail;
 
+    // eslint-disable-next-line
+    // console.log(`>>>>> dragCallback :: element (${element.dataset.viewportUid})`);
+
     const { annotation, viewportIdsToRender, handleIndex, movingTextBox } =
       this.editData;
     const { data } = annotation;
@@ -471,8 +480,21 @@ class LengthTool extends AnnotationTool {
     }
   };
 
+  // _testMouseMove = () => {
+  //   console.log('>>>>> length :: mousemove');
+  // };
+
+  // _testCornerstoneMouseDrag = () => {
+  //   console.log('>>>>> length :: cornerstone :: mousedrag');
+  // };
+
   _activateModify = (element: HTMLDivElement) => {
     state.isInteractingWithTool = true;
+
+    // eslint-disable-next-line
+    // console.log(`>>>>> activateModify :: element (${element.dataset.viewportUid}):`, );
+    // element.addEventListener('mousemove', this._testMouseMove);
+    // element.addEventListener(Events.MOUSE_DRAG, this._testCornerstoneMouseDrag);
 
     element.addEventListener(
       Events.MOUSE_UP,
@@ -503,6 +525,12 @@ class LengthTool extends AnnotationTool {
 
   _deactivateModify = (element: HTMLDivElement) => {
     state.isInteractingWithTool = false;
+
+    // // eslint-disable-next-line
+    // console.log(`>>>>> deactivateModify :: element (${element.dataset.viewportUid}):`, );
+    // element.removeEventListener('mousemove', this._testMouseMove);
+    // // eslint-disable-next-line
+    // element.removeEventListener(Events.MOUSE_DRAG, this._testCornerstoneMouseDrag);
 
     element.removeEventListener(
       Events.MOUSE_UP,

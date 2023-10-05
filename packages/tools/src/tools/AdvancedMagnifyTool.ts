@@ -235,8 +235,8 @@ class AdvancedMagnifyTool extends AnnotationTool {
     const canvasPos = currentPoints.canvas;
     const { magnifyRadius, magnifyZoomFactor } = this.configuration;
 
-    console.log('>>>>> add :: canvas:', canvasPos);
-    console.log('>>>>> add :: world:', worldPos);
+    // console.log('>>>>> add :: canvas:', canvasPos);
+    // console.log('>>>>> add :: world:', worldPos);
 
     const worldHandlesPoints = this._getWorldHandlesPoints(
       viewport,
@@ -264,7 +264,7 @@ class AdvancedMagnifyTool extends AnnotationTool {
       zoomFactor: magnifyZoomFactor,
     });
 
-    console.log('>>>>> create :: magnifyViewportId:', magnifyViewportId);
+    // console.log('>>>>> create :: magnifyViewportId:', magnifyViewportId);
 
     const annotation: AdvancedMagnifyAnnotation = {
       highlighted: true,
@@ -300,8 +300,8 @@ class AdvancedMagnifyTool extends AnnotationTool {
       newAnnotation: true,
     };
 
-    this._activateDraw(element);
-    hideElementCursor(element);
+    // this._activateDraw(element);
+    // hideElementCursor(element);
     evt.preventDefault();
     triggerAnnotationRenderForViewportIds(renderingEngine, viewportIdsToRender);
 
@@ -360,8 +360,6 @@ class AdvancedMagnifyTool extends AnnotationTool {
     evt: EventTypes.InteractionEventType,
     annotation: AdvancedMagnifyAnnotation
   ): void => {
-    console.log('>>>>> toolSelectedCallback');
-
     const eventDetail = evt.detail;
     const { element } = eventDetail;
 
@@ -394,8 +392,6 @@ class AdvancedMagnifyTool extends AnnotationTool {
     annotation: AdvancedMagnifyAnnotation,
     handle: ToolHandle
   ): void => {
-    console.log('>>>>> handleSelectedCallback');
-
     const eventDetail = evt.detail;
     const { element } = eventDetail;
     const { data } = annotation;
@@ -472,8 +468,6 @@ class AdvancedMagnifyTool extends AnnotationTool {
   };
 
   _dragDrawCallback = (evt: EventTypes.InteractionEventType): void => {
-    console.log('>>>>> dragDrawCallback');
-
     this.isDrawing = true;
     const eventDetail = evt.detail;
     const { element, deltaPoints } = eventDetail;

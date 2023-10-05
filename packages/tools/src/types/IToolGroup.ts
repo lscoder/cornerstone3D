@@ -79,10 +79,10 @@ export default interface IToolGroup {
   clone: {
     ({
       newToolGroupId,
-      toolFilter,
+      fnToolFilter,
     }: {
       newToolGroupId: string;
-      toolFilter?: (toolName: string) => boolean;
+      fnToolFilter?: (toolName: string) => boolean;
     }): IToolGroup;
   };
 }

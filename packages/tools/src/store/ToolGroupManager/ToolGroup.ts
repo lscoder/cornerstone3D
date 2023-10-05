@@ -682,7 +682,7 @@ export default class ToolGroup implements IToolGroup {
     return cloneDeep(_configuration);
   }
 
-  public clone({ newToolGroupId, toolFilter = () => true }) {
+  public clone({ newToolGroupId, fnToolFilter = null }) {
     let toolGroup = ToolGroupManager.getToolGroup(newToolGroupId);
 
     if (toolGroup) {
@@ -691,17 +691,15 @@ export default class ToolGroup implements IToolGroup {
     }
 
     toolGroup = ToolGroupManager.createToolGroup(newToolGroupId);
+    fnToolFilter = fnToolFilter ?? (() => true);
 
     Object.keys(this._toolInstances)
-      .filter(toolFilter)
+      .filter(fnToolFilter)
       .forEach((toolName) => {
         const sourceToolInstance = this._toolInstances[toolName];
         const sourceToolOptions = this.toolOptions[toolName];
         const sourceToolMode = sourceToolInstance.mode;
 
-        console.log(
-          `>>>>> toolGroup :: tool :: ${toolName} :: ${sourceToolMode}`
-        );
         toolGroup.addTool(toolName);
 
         (toolGroup as unknown as ToolGroup).setToolMode(

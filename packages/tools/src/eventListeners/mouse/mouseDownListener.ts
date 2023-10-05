@@ -158,7 +158,8 @@ function mouseDownListener(evt: MouseEvent) {
   doubleClickState.mouseDownEvent = evt;
   doubleClickState.ignoreDoubleClick = false;
 
-  state.element = <HTMLDivElement>evt.currentTarget;
+  const element = <HTMLDivElement>evt.currentTarget;
+  state.element = element;
 
   state.mouseButton = evt.buttons;
 
@@ -180,6 +181,9 @@ function mouseDownListener(evt: MouseEvent) {
   state.startPoints = _copyPoints(startPoints);
   state.lastPoints = _copyPoints(startPoints);
 
+  // console.log(
+  //   `>>>>>  event :: mousedown (cornerstone, ${element.dataset.viewportUid})`
+  // );
   document.addEventListener('mouseup', _onMouseUp);
   document.addEventListener('mousemove', _onMouseDrag);
 }
@@ -462,7 +466,19 @@ function _updateMouseEventsLastPoints(
   element: HTMLDivElement,
   lastPoints: IPoints
 ): IPoints {
-  const { viewport } = getEnabledElement(element);
+  const enabledElement = getEnabledElement(element);
+  // // eslint-disable-next-line
+  // console.log('>>>>> updateMouseEventsLastPoints :: element:', element)
+  // // eslint-disable-next-line
+  // console.log('>>>>> updateMouseEventsLastPoints :: enabledElement:', enabledElement)
+  // // eslint-disable-next-line
+  // console.log('>>>>> updateMouseEventsLastPoints :: enabledElement:', lastPoints)
+  //
+  // if (!element) {
+  //   debugger;
+  // }
+
+  const { viewport } = enabledElement;
   // Need to update the world point to be calculated from the current reference frame,
   // Which might have changed since the last interaction.
   const world = viewport.canvasToWorld(lastPoints.canvas);

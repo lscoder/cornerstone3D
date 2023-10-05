@@ -9,12 +9,19 @@ import getToolsWithActionsForMouseEvent from '../shared/getToolsWithActionsForMo
 
 const { Active, Passive } = ToolModes;
 
+/**
+ * Look for active or passive annotations with an action that could handle the
+ * event based on the bindings and invoke the first one found.
+ *
+ * @param evt - The normalized mouseDown event.
+ * @returns True if an action has executed or false otherwise
+ */
 export default function mouseDownAnnotationAction(
   evt: EventTypes.MouseDownEventType
-) {
+): boolean {
   // If a tool has locked the current state it is dealing with an interaction within its own eventLoop.
   if (state.isInteractingWithTool) {
-    return;
+    return false;
   }
 
   const eventDetail = evt.detail;

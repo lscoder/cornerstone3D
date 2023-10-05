@@ -40,8 +40,9 @@ const { Active, Passive } = ToolModes;
  * - Next we check any tools are interactable (e.g. moving an entire length annotation rather than one of its handles:
  *   `filterMoveableAnnotationTools`). If interactable tools are found, the first tool found consumes the event and the
  *   event does not propagate further.
- * - Finally, if the `activeTool` has `postMouseDownCallback`, this is called.  If the callback returns `true`,
+ * - If the `activeTool` has `postMouseDownCallback`, this is called.  If the callback returns `true`,
  *   the event does not propagate further.
+ * - Finally, look for annotations actions that could handle the event.
  *
  * If the event is not consumed the event will bubble to the `mouseDownActivate` handler.
  *
@@ -50,12 +51,6 @@ const { Active, Passive } = ToolModes;
 export default function mouseDown(evt: EventTypes.MouseDownEventType) {
   // If a tool has locked the current state it is dealing with an interaction within its own eventLoop.
   if (state.isInteractingWithTool) {
-    return;
-  }
-
-  const actionExecuted = mouseDownAnnotationAction(evt);
-
-  if (actionExecuted) {
     return;
   }
 
@@ -154,6 +149,8 @@ export default function mouseDown(evt: EventTypes.MouseDownEventType) {
       return;
     }
   }
+
+  mouseDownAnnotationAction(evt);
 
   // Don't stop propagation so that mouseDownActivate can handle the event
 }

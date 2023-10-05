@@ -15,6 +15,7 @@ import { debounce } from '../utilities';
 import { ToolModeChangedEventType } from '../types/EventTypes';
 import { segmentation } from '..';
 import { IToolGroup } from '../types';
+import { state } from '../store';
 import {
   AnnotationTool,
   AdvancedMagnifyTool,
@@ -52,7 +53,7 @@ class AdvancedMagnifyViewport {
     zoomFactor: number;
   }) {
     // Private properties
-    this._viewportId = csUtils.createGuid();
+    this._viewportId = `magnifyViewport-${csUtils.createGuid()}`;
     this._sourceEnabledElement = sourceEnabledElement;
 
     // Pulic properties
@@ -61,11 +62,13 @@ class AdvancedMagnifyViewport {
     this.zoomFactor = zoomFactor;
     this.visible = true;
 
+    this._mouseDownCallback = this._mouseDownCallback.bind(this);
+    this._mouseUpCallback = this._mouseUpCallback.bind(this);
+    this._handleToolModeChanged = this._handleToolModeChanged.bind(this);
     this._resizeViewportAsync = <() => void>(
       debounce(this._resizeViewport.bind(this), 1)
     );
 
-    this._handleToolModeChanged = this._handleToolModeChanged.bind(this);
     this._initialize();
   }
 
@@ -90,7 +93,7 @@ class AdvancedMagnifyViewport {
     const { _magnifyToolGroup: magnifyToolGroup } = this;
     const { toolGroupId, toolName, mode, toolBindingsOptions } = evt.detail;
 
-    if (this._sourceToolGroup.id !== toolGroupId) {
+    if (this._sourceToolGroup?.id !== toolGroupId) {
       return;
     }
 
@@ -117,7 +120,7 @@ class AdvancedMagnifyViewport {
     const parentNode = canvas.parentNode;
 
     // const svgNode = parentNode.querySelector(':scope > .svg-layer');
-    // // parentNode.insertBefore(magnifyElement, svgNode);
+    // parentNode.insertBefore(magnifyElement, svgNode);
 
     parentNode.appendChild(magnifyElement);
   }
@@ -155,9 +158,7 @@ class AdvancedMagnifyViewport {
       position: 'absolute',
       overflow: 'hidden',
       borderRadius: '50%',
-      // border: `solid 5px #a00`,
       boxSizing: 'border-box',
-      // backgroundColor: 'rgba(255, 0, 0, 0.1)',
       left: `${-radius}px`,
       top: `${-radius}px`,
       transform: `translate(-1000px, -1000px)`,
@@ -203,7 +204,7 @@ class AdvancedMagnifyViewport {
 
     const magnifyToolGroup = sourceToolGroup.clone({
       newToolGroupId: magnifyToolGroupId,
-      toolFilter: (toolName) => {
+      fnToolFilter: (toolName) => {
         const toolInstance = sourceToolGroup.getToolInstance(toolName);
         const isAnnotationTool =
           toolInstance instanceof AnnotationTool &&
@@ -337,21 +338,90 @@ class AdvancedMagnifyViewport {
     this._magnifyToolGroup = toolGroups.magnifyToolGroup;
   }
 
-  private _initializeViewport(): void {
-    const { _sourceEnabledElement: sourceEnabledElement } = this;
-    const { viewport: sourceViewport } = sourceEnabledElement;
-    const magnifyElement = this._createViewportNode();
-
-    this._appendMagnifyViewportNode(sourceEnabledElement, magnifyElement);
-    this._cloneViewport(sourceViewport, magnifyElement);
-    this._enabledElement = getEnabledElement(magnifyElement);
+  private _cancelMouseEventCallback(evt): void {
+    evt.stopPropagation();
+    evt.preventDefault();
   }
 
-  private _addEventListeners() {
+  private _mouseUpCallback(evt) {
+    const { element } = this._enabledElement.viewport;
+
+    // eslint-disable-next-line
+    // console.log(`>>>>> MG :: event :: mouseUpCallback (${element.dataset.viewportUid})`);
+
+    document.removeEventListener('mouseup', this._mouseUpCallback);
+
+    // Restrict the scope of magnifying glass events again
+    element.addEventListener('mouseup', this._cancelMouseEventCallback);
+    element.addEventListener('mousemove', this._cancelMouseEventCallback);
+
+    // evt.stopPropagation();
+    // evt.preventDefault();
+  }
+
+  private _mouseDownCallback(evt) {
+    const { element } = this._enabledElement.viewport;
+
+    // eslint-disable-next-line
+    // console.log(`>>>>> MG :: event :: mouseDownCallback (${element.dataset.viewportUid})`);
+
+    // Wait for the mouseup event to restrict the scope of magnifying glass events again
+    document.addEventListener('mouseup', this._mouseUpCallback);
+
+    // Allow mouseup and mousemove events to make it possible to manipulate the
+    // tool when passing the mouse over the magnifying glass (dragging a handle).
+    // Just relying on state.isInteractingWithTool does not work because there
+    // is a 400ms delay to handle double click (see mouseDownListener) which
+    // makes the magnifying glass unresponsive for that amount of time.
+    element.removeEventListener('mouseup', this._cancelMouseEventCallback);
+    element.removeEventListener('mousemove', this._cancelMouseEventCallback);
+
+    // evt.stopPropagation();
+    // evt.preventDefault();
+  }
+
+  private _addNativeEventListeners(element) {
+    // const { element } = this._enabledElement.viewport;
+
+    // eslint-disable-next-line
+    // console.log(`>>>>> MG :: addNativeEventListeners (${element.dataset.viewportUid})`);
+
+    // mousedown on document is handled in the capture phase because the other
+    // mousedown event listener added to the magnifying glass element does not
+    // allow the event to buble up and reach the document.
+    document.addEventListener('mousedown', this._mouseDownCallback, true);
+
+    // All mouse events should not buble up avoiding the source viewport from
+    // handling those events resulting in unexpected behaviors.
+    element.addEventListener('mousedown', this._cancelMouseEventCallback);
+    element.addEventListener('mouseup', this._cancelMouseEventCallback);
+    element.addEventListener('mousemove', this._cancelMouseEventCallback);
+    element.addEventListener('dblclick', this._cancelMouseEventCallback);
+  }
+
+  private _removeNativeEventListeners() {
+    const { element } = this._enabledElement.viewport;
+
+    // eslint-disable-next-line
+    // console.log(`>>>>> MG :: removeNativeEventListeners (${element.dataset.viewportUid})`);
+
+    document.removeEventListener('mousedown', this._mouseDownCallback, true);
+    document.removeEventListener('mouseup', this._mouseUpCallback);
+    element.removeEventListener('mousedown', this._cancelMouseEventCallback);
+    element.removeEventListener('mouseup', this._cancelMouseEventCallback);
+    element.removeEventListener('mousemove', this._cancelMouseEventCallback);
+    element.removeEventListener('dblclick', this._cancelMouseEventCallback);
+  }
+
+  private _addEventListeners(magnifyElement) {
+    // console.log('>>>>>  event :: MG :: adding listeners (magnifier)');
+
     eventTarget.addEventListener(
       cstEvents.TOOL_MODE_CHANGED,
       this._handleToolModeChanged
     );
+
+    this._addNativeEventListeners(magnifyElement);
   }
 
   private _removeEventListeners() {
@@ -359,11 +429,30 @@ class AdvancedMagnifyViewport {
       cstEvents.TOOL_MODE_CHANGED,
       this._handleToolModeChanged
     );
+
+    this._removeNativeEventListeners();
+  }
+
+  private _initializeViewport(): void {
+    const { _sourceEnabledElement: sourceEnabledElement } = this;
+    const { viewport: sourceViewport } = sourceEnabledElement;
+    const magnifyElement = this._createViewportNode();
+
+    // this._cancelMouseEvent(magnifyElement, 'dblclick');
+    // this._cancelMouseEvent(magnifyElement, 'mousedown');
+    // this._cancelMouseEvent(magnifyElement, 'mouseup', false);
+    // this._cancelMouseEvent(magnifyElement, 'mousemove', false);
+
+    this._addEventListeners(magnifyElement);
+
+    this._appendMagnifyViewportNode(sourceEnabledElement, magnifyElement);
+    this._cloneViewport(sourceViewport, magnifyElement);
+    this._enabledElement = getEnabledElement(magnifyElement);
   }
 
   private _initialize() {
     this._initializeViewport();
-    this._addEventListeners();
+    // this._addEventListeners();
   }
 
   private _syncViewportsCameras(sourceViewport, magnifyViewport) {
