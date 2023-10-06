@@ -2,7 +2,6 @@ import { vec2, vec3 } from 'gl-matrix';
 import {
   getEnabledElement,
   eventTarget,
-  triggerEvent,
   utilities as csUtils,
 } from '@cornerstonejs/core';
 import type { Types } from '@cornerstonejs/core';
@@ -58,6 +57,7 @@ class AdvancedMagnifyViewport {
   private _radius = 0;
   private _resized = false;
   private _resizeViewportAsync: () => void;
+  private _canAutoPan = false;
   private _autoPan: {
     enabled: boolean;
     padding: number;
@@ -97,8 +97,8 @@ class AdvancedMagnifyViewport {
     this.zoomFactor = zoomFactor;
     this.visible = true;
 
-    this._mouseDownCallback = this._mouseDownCallback.bind(this);
-    this._mouseUpCallback = this._mouseUpCallback.bind(this);
+    this._nativeMouseDownCallback = this._nativeMouseDownCallback.bind(this);
+    this._nativeMouseUpCallback = this._nativeMouseUpCallback.bind(this);
     this._handleToolModeChanged = this._handleToolModeChanged.bind(this);
     this._mouseDragCallback = this._mouseDragCallback.bind(this);
     this._resizeViewportAsync = <() => void>(
@@ -259,34 +259,23 @@ class AdvancedMagnifyViewport {
     return { sourceToolGroup, magnifyToolGroup };
   }
 
-  private _cloneVolumeViewport({
-    sourceViewport,
-    magnifyViewportId,
-    magnifyElement,
-    renderingEngine,
-  }: {
-    sourceViewport: Types.IVolumeViewport;
-    magnifyViewportId: string;
-    magnifyElement: HTMLDivElement;
-    renderingEngine: Types.IRenderingEngine;
-  }): Types.IVolumeViewport {
+  private _cloneStack(
+    sourceViewport: Types.IStackViewport,
+    magnifyViewport: Types.IStackViewport
+  ): void {
+    const imageIds = sourceViewport.getImageIds();
+
+    magnifyViewport.setStack(imageIds).then(() => {
+      this._isViewportReady = true;
+      this.update();
+    });
+  }
+
+  private _cloneVolumes(
+    sourceViewport: Types.IVolumeViewport,
+    magnifyViewport: Types.IVolumeViewport
+  ): Types.IVolumeViewport {
     const actors = sourceViewport.getActors();
-    const { options: sourceViewportOptions } = sourceViewport;
-
-    const viewportInput = {
-      element: magnifyElement,
-      viewportId: magnifyViewportId,
-      type: sourceViewport.type,
-      defaultOptions: { ...sourceViewportOptions },
-    };
-
-    renderingEngine.enableElement(viewportInput);
-
-    const magnifyViewport = <Types.IVolumeViewport>(
-      renderingEngine.getViewport(magnifyViewportId)
-    );
-
-    // Actors with uid !== referenceId are segmentations
     const volumeInputArray: Types.IVolumeInput[] = actors
       .filter((actor) => !isSegmentation(actor))
       .map((actor) => ({ volumeId: actor.uid }));
@@ -299,18 +288,11 @@ class AdvancedMagnifyViewport {
     return magnifyViewport;
   }
 
-  private _cloneStackViewport({
-    sourceViewport,
-    magnifyViewportId,
-    magnifyElement,
-    renderingEngine,
-  }: {
-    sourceViewport: Types.IStackViewport;
-    magnifyViewportId: string;
-    magnifyElement: HTMLDivElement;
-    renderingEngine: Types.IRenderingEngine;
-  }): Types.IStackViewport {
-    const imageIds = sourceViewport.getImageIds();
+  private _cloneViewport(sourceViewport, magnifyElement) {
+    const { viewportId: magnifyViewportId } = this;
+    const renderingEngine =
+      sourceViewport.getRenderingEngine() as Types.IRenderingEngine;
+
     const { options: sourceViewportOptions } = sourceViewport;
     const viewportInput = {
       element: magnifyElement,
@@ -321,38 +303,17 @@ class AdvancedMagnifyViewport {
 
     renderingEngine.enableElement(viewportInput);
 
-    const magnifyViewport = renderingEngine.getViewport(
-      magnifyViewportId
-    ) as Types.IStackViewport;
-
-    magnifyViewport.setStack(imageIds).then(() => {
-      this._isViewportReady = true;
-      this.update();
-    });
-
-    return magnifyViewport;
-  }
-
-  private _cloneViewport(sourceViewport, magnifyElement) {
-    const { viewportId: magnifyViewportId } = this;
-    const renderingEngine =
-      sourceViewport.getRenderingEngine() as Types.IRenderingEngine;
-    let magnifyViewport;
+    const magnifyViewport = <Types.IViewport>(
+      renderingEngine.getViewport(magnifyViewportId)
+    );
 
     if (this._isStackViewport(sourceViewport)) {
-      magnifyViewport = this._cloneStackViewport({
-        sourceViewport,
-        magnifyViewportId,
-        magnifyElement,
-        renderingEngine,
-      });
+      this._cloneStack(sourceViewport, magnifyViewport as Types.IStackViewport);
     } else if (this._isVolumeViewport(sourceViewport)) {
-      magnifyViewport = this._cloneVolumeViewport({
+      this._cloneVolumes(
         sourceViewport,
-        magnifyViewportId,
-        magnifyElement,
-        renderingEngine,
-      });
+        magnifyViewport as Types.IVolumeViewport
+      );
     }
 
     // Prevent handling events outside of the magnifying glass because it has rounded border
@@ -369,21 +330,26 @@ class AdvancedMagnifyViewport {
     evt.preventDefault();
   }
 
-  private _mouseUpCallback(evt) {
+  private _nativeMouseUpCallback(evt) {
     const { element } = this._enabledElement.viewport;
 
-    document.removeEventListener('mouseup', this._mouseUpCallback);
+    document.removeEventListener('mouseup', this._nativeMouseUpCallback);
 
     // Restrict the scope of magnifying glass events again
     element.addEventListener('mouseup', this._cancelMouseEventCallback);
     element.addEventListener('mousemove', this._cancelMouseEventCallback);
   }
 
-  private _mouseDownCallback(evt) {
+  private _nativeMouseDownCallback(evt) {
     const { element } = this._enabledElement.viewport;
 
+    // Enable auto pan only when user clicks inside of the magnifying glass
+    // viewport otherwise it can move when interacting with annotations outside
+    // of the magnifying glass or when trying to move/resize it.
+    this._canAutoPan = !!evt.target?.closest('.advancedMagnifyTool');
+
     // Wait for the mouseup event to restrict the scope of magnifying glass events again
-    document.addEventListener('mouseup', this._mouseUpCallback);
+    document.addEventListener('mouseup', this._nativeMouseUpCallback);
 
     // Allow mouseup and mousemove events to make it possible to manipulate the
     // tool when passing the mouse over the magnifying glass (dragging a handle).
@@ -401,7 +367,7 @@ class AdvancedMagnifyViewport {
 
     const { _autoPan: autoPan } = this;
 
-    if (!autoPan.enabled) {
+    if (!autoPan.enabled || !this._canAutoPan) {
       return;
     }
 
@@ -425,15 +391,6 @@ class AdvancedMagnifyViewport {
 
       vec2.normalize(canvasDeltaPos, canvasDeltaPos);
       vec2.scale(canvasDeltaPos, canvasDeltaPos, panDist);
-
-      // const eventDetail = {
-      //   magnifyViewportId: this._viewportId,
-      //   canvasDeltaPos,
-      // };
-      //
-      // triggerEvent(element, 'MAGNIFYING_GLASS_SOMETHING', eventDetail, {
-      //   bubbles: true,
-      // });
 
       const newCanvasPosition = vec2.add(
         vec2.create(),
@@ -473,7 +430,7 @@ class AdvancedMagnifyViewport {
     // mousedown on document is handled in the capture phase because the other
     // mousedown event listener added to the magnifying glass element does not
     // allow the event to buble up and reach the document.
-    document.addEventListener('mousedown', this._mouseDownCallback, true);
+    document.addEventListener('mousedown', this._nativeMouseDownCallback, true);
 
     // All mouse events should not buble up avoiding the source viewport from
     // handling those events resulting in unexpected behaviors.
@@ -483,11 +440,13 @@ class AdvancedMagnifyViewport {
     element.addEventListener('dblclick', this._cancelMouseEventCallback);
   }
 
-  private _removeNativeEventListeners() {
-    const { element } = this._enabledElement.viewport;
-
-    document.removeEventListener('mousedown', this._mouseDownCallback, true);
-    document.removeEventListener('mouseup', this._mouseUpCallback);
+  private _removeNativeEventListeners(element) {
+    document.removeEventListener(
+      'mousedown',
+      this._nativeMouseDownCallback,
+      true
+    );
+    document.removeEventListener('mouseup', this._nativeMouseUpCallback);
 
     element.removeEventListener('mousedown', this._cancelMouseEventCallback);
     element.removeEventListener('mouseup', this._cancelMouseEventCallback);
@@ -495,32 +454,42 @@ class AdvancedMagnifyViewport {
     element.removeEventListener('dblclick', this._cancelMouseEventCallback);
   }
 
-  private _addEventListeners(magnifyElement) {
+  private _addEventListeners(element) {
     eventTarget.addEventListener(
       cstEvents.TOOL_MODE_CHANGED,
       this._handleToolModeChanged
     );
 
-    magnifyElement.addEventListener(
+    element.addEventListener(
       cstEvents.MOUSE_MOVE,
       this._mouseDragCallback as EventListener
     );
 
-    magnifyElement.addEventListener(
+    element.addEventListener(
       cstEvents.MOUSE_DRAG,
       this._mouseDragCallback as EventListener
     );
 
-    this._addNativeEventListeners(magnifyElement);
+    this._addNativeEventListeners(element);
   }
 
-  private _removeEventListeners() {
+  private _removeEventListeners(element) {
     eventTarget.removeEventListener(
       cstEvents.TOOL_MODE_CHANGED,
       this._handleToolModeChanged
     );
 
-    this._removeNativeEventListeners();
+    element.addEventListener(
+      cstEvents.MOUSE_MOVE,
+      this._mouseDragCallback as EventListener
+    );
+
+    element.addEventListener(
+      cstEvents.MOUSE_DRAG,
+      this._mouseDragCallback as EventListener
+    );
+
+    this._removeNativeEventListeners(element);
   }
 
   private _initialize() {
@@ -632,9 +601,16 @@ class AdvancedMagnifyViewport {
   }
 
   public dispose() {
-    // TODO: remove element from the DOM, ToolGroups, etc.
+    const { viewport } = this._enabledElement;
+    const { element } = viewport;
+    const renderingEngine = viewport.getRenderingEngine();
 
-    this._removeEventListeners();
+    this._removeEventListeners(element);
+    renderingEngine.disableElement(viewport.id);
+
+    if (element.parentNode) {
+      element.parentNode.removeChild(element);
+    }
   }
 }
 

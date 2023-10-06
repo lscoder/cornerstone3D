@@ -13,12 +13,6 @@ const eventName = Events.MOUSE_MOVE;
  */
 function mouseMoveListener(evt: MouseEvent) {
   const element = <HTMLDivElement>evt.currentTarget;
-  // console.log(
-  //   `>>>>>  event :: mousemove (cornerstone, ${element.dataset.viewportUid})`
-  // );
-  // const element = <HTMLDivElement>evt.target;
-  // console.log('>>>>> target: ', evt.target, evt.currentTarget);
-  // console.log('>>>>> target equals: ', evt.target === evt.currentTarget);
   const enabledElement = getEnabledElement(element);
   const { renderingEngineId, viewportId } = enabledElement;
 

@@ -2,18 +2,15 @@ import { AnnotationTool } from './base';
 
 import {
   getEnabledElement,
-  VolumeViewport,
   eventTarget,
   triggerEvent,
   utilities as csUtils,
 } from '@cornerstonejs/core';
 import type { Types } from '@cornerstonejs/core';
 
-import roundNumber from '../utilities/roundNumber';
 import {
   addAnnotation,
   getAnnotations,
-  removeAnnotation,
 } from '../stateManagement/annotation/annotationState';
 import { isAnnotationLocked } from '../stateManagement/annotation/annotationLocking';
 import { isAnnotationVisible } from '../stateManagement/annotation/annotationVisibility';
@@ -24,7 +21,6 @@ import {
 import { state } from '../store';
 import { Events, MouseBindings, KeyboardBindings } from '../enums';
 import { getViewportIdsWithToolToRender } from '../utilities/viewportFilters';
-import getWorldWidthAndHeightFromTwoPoints from '../utilities/planar/getWorldWidthAndHeightFromTwoPoints';
 import {
   resetElementCursor,
   hideElementCursor,
@@ -34,32 +30,16 @@ import {
   ToolHandle,
   PublicToolProps,
   ToolProps,
-  InteractionTypes,
   SVGDrawingHelper,
 } from '../types';
 import { AdvancedMagnifyAnnotation } from '../types/ToolSpecificAnnotationTypes';
 
-import {
-  AnnotationCompletedEventDetail,
-  AnnotationModifiedEventDetail,
-  MouseDragEventType,
-  MouseMoveEventType,
-} from '../types/EventTypes';
+import { AnnotationCompletedEventDetail } from '../types/EventTypes';
 import triggerAnnotationRenderForViewportIds from '../utilities/triggerAnnotationRenderForViewportIds';
 import { StyleSpecifier } from '../types/AnnotationStyle';
-import {
-  ModalityUnitOptions,
-  getModalityUnit,
-} from '../utilities/getModalityUnit';
-import {
-  getCanvasCircleCorners,
-  getCanvasCircleRadius,
-} from '../utilities/math/circle';
-import { pointInEllipse } from '../utilities/math/ellipse';
+import { getCanvasCircleRadius } from '../utilities/math/circle';
 import AdvancedMagnifyViewportManager from './AdvancedMagnifyViewportManager';
 import type { AutoPanCallbackData } from './AdvancedMagnifyViewport';
-
-const { transformWorldToIndex } = csUtils;
 
 class AdvancedMagnifyTool extends AnnotationTool {
   static toolName;
@@ -107,34 +87,9 @@ class AdvancedMagnifyTool extends AnnotationTool {
   ) {
     super(toolProps, defaultToolProps);
     this.magnifyViewportManager = AdvancedMagnifyViewportManager.getInstance();
-
-    // this._initialize();
   }
 
-  // _initialize() {
-  //   this._onMagnifySomething = this._onMagnifySomething.bind(this);
-  //   document.addEventListener(
-  //     'MAGNIFYING_GLASS_SOMETHING',
-  //     this._onMagnifySomething
-  //   );
-  // }
-
-  // dispose() {
-  //   document.removeEventListener(
-  //     'MAGNIFYING_GLASS_SOMETHING',
-  //     this._onMagnifySomething
-  //   );
-  // }
-
-  // private _onMagnifySomething(evt: EventTypes.InteractionEventType) {
-  //   console.log('>>>>> MG :: event :: onMagnifySomething ::', evt.detail);
-  // }
-
-  // public onMagnifySomething() {
-  //   console.log('>>>>> onMagnifySomething');
-  // }
-
-  _getZoomFactorsListDropdown(currentZoomFactor, onChangeCallback) {
+  private _getZoomFactorsListDropdown(currentZoomFactor, onChangeCallback) {
     const { zoomFactorList } = this.configuration.magnifyingGlass;
     const dropdown = document.createElement('select');
 
@@ -180,7 +135,7 @@ class AdvancedMagnifyTool extends AnnotationTool {
 
   // Basic dropdown component that allows the user to select a different zoom factor.
   // configurations.actions may be changed to use a customized dropdown.
-  showZoomFactorsList(
+  public showZoomFactorsList(
     evt: EventTypes.InteractionEventType,
     annotation: AdvancedMagnifyAnnotation
   ) {
@@ -214,7 +169,7 @@ class AdvancedMagnifyTool extends AnnotationTool {
     dropdown.focus();
   }
 
-  _getWorldHandlesPoints = (
+  private _getWorldHandlesPoints = (
     viewport,
     canvasCenterPos,
     canvasRadius
@@ -329,8 +284,6 @@ class AdvancedMagnifyTool extends AnnotationTool {
       newAnnotation: true,
     };
 
-    // this._activateDraw(element);
-    // hideElementCursor(element);
     evt.preventDefault();
     triggerAnnotationRenderForViewportIds(renderingEngine, viewportIdsToRender);
 
@@ -348,7 +301,7 @@ class AdvancedMagnifyTool extends AnnotationTool {
    * @param proximity - Proximity to tool to consider
    * @returns Boolean, whether the canvas point is near tool
    */
-  isPointNearTool = (
+  public isPointNearTool = (
     element: HTMLDivElement,
     annotation: AdvancedMagnifyAnnotation,
     canvasCoords: Types.Point2,
@@ -369,8 +322,9 @@ class AdvancedMagnifyTool extends AnnotationTool {
       Types.Point2
     ];
 
-    const [canvasTop, canvasRight, canvasBottom, canvasLeft] =
-      canvasCoordinates;
+    const canvasTop = canvasCoordinates[0];
+    const canvasBottom = canvasCoordinates[2];
+    const canvasLeft = canvasCoordinates[3];
     const radius = Math.abs(canvasBottom[1] - canvasTop[1]) * 0.5;
     const center = [
       canvasLeft[0] + radius,
@@ -378,7 +332,7 @@ class AdvancedMagnifyTool extends AnnotationTool {
     ] as Types.Point2;
     const radiusPoint = getCanvasCircleRadius([center, canvasCoords]);
 
-    if (Math.abs(radiusPoint - radius) < proximity / 2) {
+    if (Math.abs(radiusPoint - radius) < proximity) {
       return true;
     }
 
@@ -457,23 +411,12 @@ class AdvancedMagnifyTool extends AnnotationTool {
     const eventDetail = evt.detail;
     const { element } = eventDetail;
 
-    const { annotation, viewportIdsToRender, newAnnotation, hasMoved } =
-      this.editData;
+    const { annotation, viewportIdsToRender, newAnnotation } = this.editData;
     const { data } = annotation;
 
-    // if (newAnnotation && !hasMoved) {
-    //   return;
-    // }
-
-    // Circle ROI tool should reset its highlight to false on mouse up (as opposed
-    // to other tools that keep it highlighted until the user moves. The reason
-    // is that we use top-left and bottom-right handles to define the circle,
-    // and they are by definition not in the circle on mouse up.
-    annotation.highlighted = false;
     data.handles.activeHandleIndex = null;
 
     this._deactivateModify(element);
-    // this._deactivateDraw(element);
 
     resetElementCursor(element);
 
@@ -563,8 +506,9 @@ class AdvancedMagnifyTool extends AnnotationTool {
     const { points } = data.handles;
 
     const canvasCoordinates = points.map((p) => worldToCanvas(p));
-    const [canvasTop, canvasRight, canvasBottom, canvasLeft] =
-      canvasCoordinates;
+    const canvasTop = canvasCoordinates[0];
+    const canvasBottom = canvasCoordinates[2];
+    const canvasLeft = canvasCoordinates[3];
     const radius = Math.abs(canvasBottom[1] - canvasTop[1]) * 0.5;
     const canvasCenter: Types.Point2 = [
       canvasLeft[0] + radius,
@@ -594,7 +538,6 @@ class AdvancedMagnifyTool extends AnnotationTool {
     // If it is mid-draw or mid-modify
     if (this.isDrawing) {
       this.isDrawing = false;
-      // this._deactivateDraw(element);
       this._deactivateModify(element);
       resetElementCursor(element);
 
@@ -650,32 +593,6 @@ class AdvancedMagnifyTool extends AnnotationTool {
     element.removeEventListener(Events.TOUCH_DRAG, this._dragModifyCallback);
     element.removeEventListener(Events.TOUCH_TAP, this._endCallback);
   };
-
-  // _activateDraw = (element) => {
-  //   state.isInteractingWithTool = true;
-
-  //   element.addEventListener(Events.MOUSE_UP, this._endCallback);
-  //   element.addEventListener(Events.MOUSE_DRAG, this._dragDrawCallback);
-  //   element.addEventListener(Events.MOUSE_MOVE, this._dragDrawCallback);
-  //   element.addEventListener(Events.MOUSE_CLICK, this._endCallback);
-
-  //   element.addEventListener(Events.TOUCH_END, this._endCallback);
-  //   element.addEventListener(Events.TOUCH_DRAG, this._dragDrawCallback);
-  //   element.addEventListener(Events.TOUCH_TAP, this._endCallback);
-  // };
-
-  // _deactivateDraw = (element) => {
-  //   state.isInteractingWithTool = false;
-
-  //   element.removeEventListener(Events.MOUSE_UP, this._endCallback);
-  //   element.removeEventListener(Events.MOUSE_DRAG, this._dragDrawCallback);
-  //   element.removeEventListener(Events.MOUSE_MOVE, this._dragDrawCallback);
-  //   element.removeEventListener(Events.MOUSE_CLICK, this._endCallback);
-
-  //   element.removeEventListener(Events.TOUCH_END, this._endCallback);
-  //   element.removeEventListener(Events.TOUCH_DRAG, this._dragDrawCallback);
-  //   element.removeEventListener(Events.TOUCH_TAP, this._endCallback);
-  // };
 
   /**
    * it is used to draw the circleROI annotation in each
