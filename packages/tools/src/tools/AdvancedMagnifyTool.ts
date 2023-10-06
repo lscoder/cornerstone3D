@@ -57,6 +57,7 @@ import {
 } from '../utilities/math/circle';
 import { pointInEllipse } from '../utilities/math/ellipse';
 import AdvancedMagnifyViewportManager from './AdvancedMagnifyViewportManager';
+import type { AutoPanCallbackData } from './AdvancedMagnifyViewport';
 
 const { transformWorldToIndex } = csUtils;
 
@@ -70,7 +71,6 @@ class AdvancedMagnifyTool extends AnnotationTool {
     annotation: any;
     viewportIdsToRender: Array<string>;
     handleIndex?: number;
-    centerCanvas?: Array<number>;
     newAnnotation?: boolean;
     hasMoved?: boolean;
   } | null;
@@ -82,9 +82,15 @@ class AdvancedMagnifyTool extends AnnotationTool {
       supportedInteractionTypes: ['Mouse', 'Touch'],
       configuration: {
         shadow: true,
-        magnifyZoomFactor: 2.5,
-        magnifyRadius: 125, // px
-        magnifyZoomFactorList: [2.5, 3, 3.5, 4, 4.5, 5],
+        magnifyingGlass: {
+          radius: 125, // px
+          zoomFactor: 2.5,
+          zoomFactorList: [2.5, 3, 3.5, 4, 4.5, 5],
+          autoPan: {
+            enabled: true,
+            padding: 10, // px
+          },
+        },
         actions: [
           {
             method: 'showZoomFactorsList',
@@ -101,10 +107,35 @@ class AdvancedMagnifyTool extends AnnotationTool {
   ) {
     super(toolProps, defaultToolProps);
     this.magnifyViewportManager = AdvancedMagnifyViewportManager.getInstance();
+
+    // this._initialize();
   }
 
+  // _initialize() {
+  //   this._onMagnifySomething = this._onMagnifySomething.bind(this);
+  //   document.addEventListener(
+  //     'MAGNIFYING_GLASS_SOMETHING',
+  //     this._onMagnifySomething
+  //   );
+  // }
+
+  // dispose() {
+  //   document.removeEventListener(
+  //     'MAGNIFYING_GLASS_SOMETHING',
+  //     this._onMagnifySomething
+  //   );
+  // }
+
+  // private _onMagnifySomething(evt: EventTypes.InteractionEventType) {
+  //   console.log('>>>>> MG :: event :: onMagnifySomething ::', evt.detail);
+  // }
+
+  // public onMagnifySomething() {
+  //   console.log('>>>>> onMagnifySomething');
+  // }
+
   _getZoomFactorsListDropdown(currentZoomFactor, onChangeCallback) {
-    const { magnifyZoomFactorList } = this.configuration;
+    const { zoomFactorList } = this.configuration.magnifyingGlass;
     const dropdown = document.createElement('select');
 
     dropdown.size = 5;
@@ -133,7 +164,7 @@ class AdvancedMagnifyTool extends AnnotationTool {
       }
     });
 
-    magnifyZoomFactorList.forEach((zoomFactor) => {
+    zoomFactorList.forEach((zoomFactor) => {
       const option = document.createElement('option');
 
       option.label = zoomFactor;
@@ -199,22 +230,8 @@ class AdvancedMagnifyTool extends AnnotationTool {
       viewport.canvasToWorld(p)
     ) as Types.Point3[];
 
-    // console.log('>>>>> handle :: center :: canvas:', canvasCenterPos);
-    // console.log('>>>>> handle :: radius :: canvas:', canvasRadius);
-    // console.log('>>>>> handle :: points :: canvas:', canvasHandlesPoints);
-    // console.log('>>>>> handle :: points :: world:', worldHandlesPoints);
-
     return worldHandlesPoints;
   };
-
-  // _getRadiusInWorldSpace = (viewport, canvasRadius) => {
-  //   const worldP1 = viewport.canvasToWorld([0, 0]);
-  //   const worldP2 = viewport.canvasToWorld([canvasRadius, 0]);
-  //   const deltaX = worldP2[0] - worldP1[0];
-  //   const deltaY = worldP2[1] - worldP1[1];
-
-  //   return Math.sqrt(deltaX ** 2 + deltaY ** 2);
-  // };
 
   /**
    * Based on the current position of the mouse and the current imageId to create
@@ -233,15 +250,13 @@ class AdvancedMagnifyTool extends AnnotationTool {
     const { viewport, renderingEngine } = enabledElement;
     const worldPos = currentPoints.world;
     const canvasPos = currentPoints.canvas;
-    const { magnifyRadius, magnifyZoomFactor } = this.configuration;
-
-    // console.log('>>>>> add :: canvas:', canvasPos);
-    // console.log('>>>>> add :: world:', worldPos);
+    const { magnifyingGlass: config } = this.configuration;
+    const { radius, zoomFactor, autoPan } = config;
 
     const worldHandlesPoints = this._getWorldHandlesPoints(
       viewport,
       canvasPos,
-      magnifyRadius
+      radius
     );
 
     const camera = viewport.getCamera();
@@ -254,19 +269,12 @@ class AdvancedMagnifyTool extends AnnotationTool {
       viewUp
     );
 
+    const annotationUID = csUtils.uuidv4();
+    const magnifyViewportId = csUtils.uuidv4();
     const FrameOfReferenceUID = viewport.getFrameOfReferenceUID();
 
-    const { magnifyViewportId } = this.magnifyViewportManager.createViewport({
-      sourceEnabledElement: enabledElement,
-      referencedImageId,
-      position: canvasPos,
-      radius: magnifyRadius,
-      zoomFactor: magnifyZoomFactor,
-    });
-
-    // console.log('>>>>> create :: magnifyViewportId:', magnifyViewportId);
-
     const annotation: AdvancedMagnifyAnnotation = {
+      annotationUID,
       highlighted: true,
       invalidated: true,
       metadata: {
@@ -278,13 +286,35 @@ class AdvancedMagnifyTool extends AnnotationTool {
       },
       data: {
         magnifyViewportId,
-        zoomFactor: this.configuration.magnifyZoomFactor,
+        zoomFactor,
         handles: {
           points: worldHandlesPoints,
           activeHandleIndex: null,
         },
       },
     };
+
+    this.magnifyViewportManager.createViewport({
+      magnifyViewportId,
+      sourceEnabledElement: enabledElement,
+      position: canvasPos,
+      radius,
+      zoomFactor,
+      autoPan: {
+        enabled: autoPan.enabled,
+        padding: autoPan.padding,
+        callback: (data: AutoPanCallbackData) => {
+          const annotationPoints = annotation.data.handles.points;
+          const { world: worldDelta } = data.delta;
+
+          for (let i = 0, len = annotationPoints.length; i < len; i++) {
+            annotationPoints[i][0] += worldDelta[0];
+            annotationPoints[i][1] += worldDelta[1];
+            annotationPoints[i][2] += worldDelta[2];
+          }
+        },
+      },
+    });
 
     addAnnotation(annotation, element);
 
@@ -296,7 +326,6 @@ class AdvancedMagnifyTool extends AnnotationTool {
     this.editData = {
       annotation,
       viewportIdsToRender,
-      // centerCanvas: canvasPos,
       newAnnotation: true,
     };
 
@@ -444,7 +473,7 @@ class AdvancedMagnifyTool extends AnnotationTool {
     data.handles.activeHandleIndex = null;
 
     this._deactivateModify(element);
-    this._deactivateDraw(element);
+    // this._deactivateDraw(element);
 
     resetElementCursor(element);
 
@@ -565,7 +594,7 @@ class AdvancedMagnifyTool extends AnnotationTool {
     // If it is mid-draw or mid-modify
     if (this.isDrawing) {
       this.isDrawing = false;
-      this._deactivateDraw(element);
+      // this._deactivateDraw(element);
       this._deactivateModify(element);
       resetElementCursor(element);
 
@@ -622,31 +651,31 @@ class AdvancedMagnifyTool extends AnnotationTool {
     element.removeEventListener(Events.TOUCH_TAP, this._endCallback);
   };
 
-  _activateDraw = (element) => {
-    state.isInteractingWithTool = true;
+  // _activateDraw = (element) => {
+  //   state.isInteractingWithTool = true;
 
-    element.addEventListener(Events.MOUSE_UP, this._endCallback);
-    element.addEventListener(Events.MOUSE_DRAG, this._dragDrawCallback);
-    element.addEventListener(Events.MOUSE_MOVE, this._dragDrawCallback);
-    element.addEventListener(Events.MOUSE_CLICK, this._endCallback);
+  //   element.addEventListener(Events.MOUSE_UP, this._endCallback);
+  //   element.addEventListener(Events.MOUSE_DRAG, this._dragDrawCallback);
+  //   element.addEventListener(Events.MOUSE_MOVE, this._dragDrawCallback);
+  //   element.addEventListener(Events.MOUSE_CLICK, this._endCallback);
 
-    element.addEventListener(Events.TOUCH_END, this._endCallback);
-    element.addEventListener(Events.TOUCH_DRAG, this._dragDrawCallback);
-    element.addEventListener(Events.TOUCH_TAP, this._endCallback);
-  };
+  //   element.addEventListener(Events.TOUCH_END, this._endCallback);
+  //   element.addEventListener(Events.TOUCH_DRAG, this._dragDrawCallback);
+  //   element.addEventListener(Events.TOUCH_TAP, this._endCallback);
+  // };
 
-  _deactivateDraw = (element) => {
-    state.isInteractingWithTool = false;
+  // _deactivateDraw = (element) => {
+  //   state.isInteractingWithTool = false;
 
-    element.removeEventListener(Events.MOUSE_UP, this._endCallback);
-    element.removeEventListener(Events.MOUSE_DRAG, this._dragDrawCallback);
-    element.removeEventListener(Events.MOUSE_MOVE, this._dragDrawCallback);
-    element.removeEventListener(Events.MOUSE_CLICK, this._endCallback);
+  //   element.removeEventListener(Events.MOUSE_UP, this._endCallback);
+  //   element.removeEventListener(Events.MOUSE_DRAG, this._dragDrawCallback);
+  //   element.removeEventListener(Events.MOUSE_MOVE, this._dragDrawCallback);
+  //   element.removeEventListener(Events.MOUSE_CLICK, this._endCallback);
 
-    element.removeEventListener(Events.TOUCH_END, this._endCallback);
-    element.removeEventListener(Events.TOUCH_DRAG, this._dragDrawCallback);
-    element.removeEventListener(Events.TOUCH_TAP, this._endCallback);
-  };
+  //   element.removeEventListener(Events.TOUCH_END, this._endCallback);
+  //   element.removeEventListener(Events.TOUCH_DRAG, this._dragDrawCallback);
+  //   element.removeEventListener(Events.TOUCH_TAP, this._endCallback);
+  // };
 
   /**
    * it is used to draw the circleROI annotation in each

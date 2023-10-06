@@ -1,7 +1,8 @@
+import { vec2, vec3 } from 'gl-matrix';
 import {
   getEnabledElement,
   eventTarget,
-  Enums,
+  triggerEvent,
   utilities as csUtils,
 } from '@cornerstonejs/core';
 import type { Types } from '@cornerstonejs/core';
@@ -14,18 +15,39 @@ import { ToolGroupManager } from '../store';
 import { debounce } from '../utilities';
 import { ToolModeChangedEventType } from '../types/EventTypes';
 import { segmentation } from '..';
-import { IToolGroup } from '../types';
+import { EventTypes, IToolGroup } from '../types';
 import { state } from '../store';
 import {
   AnnotationTool,
   AdvancedMagnifyTool,
   SegmentationDisplayTool,
 } from './';
+import { distanceToPoint } from '../utilities/math/point';
 
 const MAGNIFY_CLASSNAME = 'advancedMagnifyTool';
 const MAGNIFY_VIEWPORT_INITIAL_RADIUS = 125;
 
 const isSegmentation = (actor) => actor.uid !== actor.referenceId;
+
+export type AutoPanCallbackData = {
+  points: {
+    currentPosition: {
+      canvas: Types.Point2;
+      world: Types.Point3;
+    };
+    newPosition: {
+      canvas: Types.Point2;
+      world: Types.Point3;
+    };
+  };
+  delta: {
+    canvas: Types.Point2;
+    world: Types.Point3;
+  };
+};
+
+export type AutoPanCallback = (data: AutoPanCallbackData) => void;
+
 class AdvancedMagnifyViewport {
   private _viewportId: string;
   private _sourceEnabledElement: Types.IEnabledElement;
@@ -36,25 +58,38 @@ class AdvancedMagnifyViewport {
   private _radius = 0;
   private _resized = false;
   private _resizeViewportAsync: () => void;
-
+  private _autoPan: {
+    enabled: boolean;
+    padding: number;
+    callback: AutoPanCallback;
+  };
   public position: Types.Point2;
   public zoomFactor: number;
   public visible: boolean;
 
   constructor({
+    magnifyViewportId,
     sourceEnabledElement,
     radius = MAGNIFY_VIEWPORT_INITIAL_RADIUS,
     position = [0, 0],
     zoomFactor,
+    autoPan,
   }: {
+    magnifyViewportId?: string;
     sourceEnabledElement: Types.IEnabledElement;
     radius?: number;
     position?: Types.Point2;
     zoomFactor: number;
+    autoPan: {
+      enabled: boolean;
+      padding: number;
+      callback: AutoPanCallback;
+    };
   }) {
     // Private properties
-    this._viewportId = `magnifyViewport-${csUtils.createGuid()}`;
+    this._viewportId = magnifyViewportId ?? csUtils.uuidv4();
     this._sourceEnabledElement = sourceEnabledElement;
+    this._autoPan = autoPan;
 
     // Pulic properties
     this.radius = radius;
@@ -65,6 +100,7 @@ class AdvancedMagnifyViewport {
     this._mouseDownCallback = this._mouseDownCallback.bind(this);
     this._mouseUpCallback = this._mouseUpCallback.bind(this);
     this._handleToolModeChanged = this._handleToolModeChanged.bind(this);
+    this._mouseDragCallback = this._mouseDragCallback.bind(this);
     this._resizeViewportAsync = <() => void>(
       debounce(this._resizeViewport.bind(this), 1)
     );
@@ -113,16 +149,6 @@ class AdvancedMagnifyViewport {
       default:
         throw new Error(`Unknow tool mode (${mode})`);
     }
-  }
-
-  private _appendMagnifyViewportNode(sourceEnabledElement, magnifyElement) {
-    const { canvas } = sourceEnabledElement.viewport;
-    const parentNode = canvas.parentNode;
-
-    // const svgNode = parentNode.querySelector(':scope > .svg-layer');
-    // parentNode.insertBefore(magnifyElement, svgNode);
-
-    parentNode.appendChild(magnifyElement);
   }
 
   // Children elements need to inherit border-radius otherwise the canvas will
@@ -346,24 +372,15 @@ class AdvancedMagnifyViewport {
   private _mouseUpCallback(evt) {
     const { element } = this._enabledElement.viewport;
 
-    // eslint-disable-next-line
-    // console.log(`>>>>> MG :: event :: mouseUpCallback (${element.dataset.viewportUid})`);
-
     document.removeEventListener('mouseup', this._mouseUpCallback);
 
     // Restrict the scope of magnifying glass events again
     element.addEventListener('mouseup', this._cancelMouseEventCallback);
     element.addEventListener('mousemove', this._cancelMouseEventCallback);
-
-    // evt.stopPropagation();
-    // evt.preventDefault();
   }
 
   private _mouseDownCallback(evt) {
     const { element } = this._enabledElement.viewport;
-
-    // eslint-disable-next-line
-    // console.log(`>>>>> MG :: event :: mouseDownCallback (${element.dataset.viewportUid})`);
 
     // Wait for the mouseup event to restrict the scope of magnifying glass events again
     document.addEventListener('mouseup', this._mouseUpCallback);
@@ -375,17 +392,84 @@ class AdvancedMagnifyViewport {
     // makes the magnifying glass unresponsive for that amount of time.
     element.removeEventListener('mouseup', this._cancelMouseEventCallback);
     element.removeEventListener('mousemove', this._cancelMouseEventCallback);
+  }
 
-    // evt.stopPropagation();
-    // evt.preventDefault();
+  private _mouseDragCallback(evt: EventTypes.InteractionEventType) {
+    if (!state.isInteractingWithTool) {
+      return;
+    }
+
+    const { _autoPan: autoPan } = this;
+
+    if (!autoPan.enabled) {
+      return;
+    }
+
+    const { currentPoints } = evt.detail;
+    const { viewport } = this._enabledElement;
+    const { canvasToWorld } = viewport;
+    const { canvas: canvasCurrent } = currentPoints;
+    const { radius: magnifyRadius } = this;
+    const canvasCenter: Types.Point2 = [magnifyRadius, magnifyRadius];
+    const dist = distanceToPoint(canvasCenter, canvasCurrent);
+    const maxDist = magnifyRadius - autoPan.padding;
+    const pan = dist > maxDist;
+
+    if (pan) {
+      const panDist = dist - maxDist;
+      const canvasDeltaPos = vec2.sub(
+        vec2.create(),
+        canvasCurrent,
+        canvasCenter
+      ) as Types.Point2;
+
+      vec2.normalize(canvasDeltaPos, canvasDeltaPos);
+      vec2.scale(canvasDeltaPos, canvasDeltaPos, panDist);
+
+      // const eventDetail = {
+      //   magnifyViewportId: this._viewportId,
+      //   canvasDeltaPos,
+      // };
+      //
+      // triggerEvent(element, 'MAGNIFYING_GLASS_SOMETHING', eventDetail, {
+      //   bubbles: true,
+      // });
+
+      const newCanvasPosition = vec2.add(
+        vec2.create(),
+        this.position,
+        canvasDeltaPos
+      ) as Types.Point2;
+      const currentWorldPos = canvasToWorld(this.position);
+      const newWorldPos = canvasToWorld(newCanvasPosition);
+      const worldDeltaPos = vec3.sub(
+        vec3.create(),
+        newWorldPos,
+        currentWorldPos
+      ) as Types.Point3;
+
+      const autoPanCallbackData: AutoPanCallbackData = {
+        points: {
+          currentPosition: {
+            canvas: this.position,
+            world: currentWorldPos,
+          },
+          newPosition: {
+            canvas: newCanvasPosition,
+            world: newWorldPos,
+          },
+        },
+        delta: {
+          canvas: canvasDeltaPos,
+          world: worldDeltaPos,
+        },
+      };
+
+      autoPan.callback(autoPanCallbackData);
+    }
   }
 
   private _addNativeEventListeners(element) {
-    // const { element } = this._enabledElement.viewport;
-
-    // eslint-disable-next-line
-    // console.log(`>>>>> MG :: addNativeEventListeners (${element.dataset.viewportUid})`);
-
     // mousedown on document is handled in the capture phase because the other
     // mousedown event listener added to the magnifying glass element does not
     // allow the event to buble up and reach the document.
@@ -402,11 +486,9 @@ class AdvancedMagnifyViewport {
   private _removeNativeEventListeners() {
     const { element } = this._enabledElement.viewport;
 
-    // eslint-disable-next-line
-    // console.log(`>>>>> MG :: removeNativeEventListeners (${element.dataset.viewportUid})`);
-
     document.removeEventListener('mousedown', this._mouseDownCallback, true);
     document.removeEventListener('mouseup', this._mouseUpCallback);
+
     element.removeEventListener('mousedown', this._cancelMouseEventCallback);
     element.removeEventListener('mouseup', this._cancelMouseEventCallback);
     element.removeEventListener('mousemove', this._cancelMouseEventCallback);
@@ -414,11 +496,19 @@ class AdvancedMagnifyViewport {
   }
 
   private _addEventListeners(magnifyElement) {
-    // console.log('>>>>>  event :: MG :: adding listeners (magnifier)');
-
     eventTarget.addEventListener(
       cstEvents.TOOL_MODE_CHANGED,
       this._handleToolModeChanged
+    );
+
+    magnifyElement.addEventListener(
+      cstEvents.MOUSE_MOVE,
+      this._mouseDragCallback as EventListener
+    );
+
+    magnifyElement.addEventListener(
+      cstEvents.MOUSE_DRAG,
+      this._mouseDragCallback as EventListener
     );
 
     this._addNativeEventListeners(magnifyElement);
@@ -433,26 +523,17 @@ class AdvancedMagnifyViewport {
     this._removeNativeEventListeners();
   }
 
-  private _initializeViewport(): void {
+  private _initialize() {
     const { _sourceEnabledElement: sourceEnabledElement } = this;
     const { viewport: sourceViewport } = sourceEnabledElement;
+    const { canvas: sourceCanvas } = sourceViewport;
     const magnifyElement = this._createViewportNode();
 
-    // this._cancelMouseEvent(magnifyElement, 'dblclick');
-    // this._cancelMouseEvent(magnifyElement, 'mousedown');
-    // this._cancelMouseEvent(magnifyElement, 'mouseup', false);
-    // this._cancelMouseEvent(magnifyElement, 'mousemove', false);
+    sourceCanvas.parentNode.appendChild(magnifyElement);
 
     this._addEventListeners(magnifyElement);
-
-    this._appendMagnifyViewportNode(sourceEnabledElement, magnifyElement);
     this._cloneViewport(sourceViewport, magnifyElement);
     this._enabledElement = getEnabledElement(magnifyElement);
-  }
-
-  private _initialize() {
-    this._initializeViewport();
-    // this._addEventListeners();
   }
 
   private _syncViewportsCameras(sourceViewport, magnifyViewport) {
@@ -550,7 +631,9 @@ class AdvancedMagnifyViewport {
     }
   }
 
-  public destroy() {
+  public dispose() {
+    // TODO: remove element from the DOM, ToolGroups, etc.
+
     this._removeEventListeners();
   }
 }

@@ -21,6 +21,7 @@ import filterMoveableAnnotationTools from '../../store/filterMoveableAnnotationT
 import getActiveToolForMouseEvent from '../shared/getActiveToolForMouseEvent';
 import getToolsWithModesForMouseEvent from '../shared/getToolsWithModesForMouseEvent';
 import mouseDownAnnotationAction from './mouseDownAnnotationAction';
+import handleMagnifyingGlassSomething from '../shared/handleMagnifyingGlassSomething';
 
 const { Active, Passive } = ToolModes;
 
@@ -151,6 +152,12 @@ export default function mouseDown(evt: EventTypes.MouseDownEventType) {
   }
 
   mouseDownAnnotationAction(evt);
+
+  // console.log('>>>>> MG :: Adding event listener');
+  // document.addEventListener(
+  //   'MAGNIFYING_GLASS_SOMETHING',
+  //   handleMagnifyingGlassSomething
+  // );
 
   // Don't stop propagation so that mouseDownActivate can handle the event
 }

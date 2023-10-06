@@ -28,7 +28,7 @@ class AdvancedMagnifyViewportManager {
   };
 
   private _createViewportInstance = (enabledElement, radius): string => {
-    const magnifyViewportId = csUtils.createGuid();
+    const magnifyViewportId = csUtils.uuidv4();
     const magnifyElement = document.createElement('div');
     const size = 2 * radius;
 

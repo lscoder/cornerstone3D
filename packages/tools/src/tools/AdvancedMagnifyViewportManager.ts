@@ -1,4 +1,8 @@
-import AdvancedMagnifyViewport from './AdvancedMagnifyViewport';
+import type { Types } from '@cornerstonejs/core';
+import {
+  AdvancedMagnifyViewport,
+  AutoPanCallback,
+} from './AdvancedMagnifyViewport';
 
 const singletonSymbol = Symbol('AdvancedMagnifyViewportManager');
 
@@ -18,26 +22,36 @@ class AdvancedMagnifyViewportManager {
   }
 
   public createViewport = ({
+    magnifyViewportId,
     sourceEnabledElement,
-    referencedImageId,
     position,
     radius,
     zoomFactor,
-  }): {
-    magnifyViewportId: string;
-  } => {
+    autoPan,
+  }: {
+    magnifyViewportId?: string;
+    sourceEnabledElement: Types.IEnabledElement;
+    position: Types.Point2;
+    radius: number;
+    zoomFactor: number;
+    autoPan: {
+      enabled: boolean;
+      padding: number;
+      callback: AutoPanCallback;
+    };
+  }): AdvancedMagnifyViewport => {
     const magnifyViewport = new AdvancedMagnifyViewport({
+      magnifyViewportId,
       sourceEnabledElement,
-      referencedImageId,
       radius,
       position,
       zoomFactor,
+      autoPan,
     });
 
-    const { viewportId: magnifyViewportId } = magnifyViewport;
-    this._viewports.set(magnifyViewportId, magnifyViewport);
+    this._viewports.set(magnifyViewport.viewportId, magnifyViewport);
 
-    return { magnifyViewportId };
+    return magnifyViewport;
   };
 
   public getViewport(magnifyViewportId: string): AdvancedMagnifyViewport {
@@ -47,7 +61,7 @@ class AdvancedMagnifyViewportManager {
   public destroyViewport(magnifyViewportId: string): void {
     const magnifyViewport = this._viewports.get(magnifyViewportId);
 
-    magnifyViewport.destroy();
+    magnifyViewport.dispose();
     this._viewports.delete(magnifyViewportId);
   }
 }
