@@ -1,9 +1,10 @@
 export enum ColorBarOrientation {
-  Vertical,
-  Horizontal,
+  Auto = 'auto',
+  Vertical = 'vertical',
+  Horizontal = 'horizontal',
 }
 
-export type ColobarVOIRange = {
+export type ColorBarVOIRange = {
   min: number;
   max: number;
 };
@@ -18,7 +19,7 @@ export type ColorBarData = {
   id?: string;
   colormaps: Colormap[];
   activeColormapName?: string;
-  voiRange?: ColobarVOIRange;
+  voiRange?: ColorBarVOIRange;
   orientation?: ColorBarOrientation;
 };
 
@@ -37,7 +38,7 @@ class ColorBar {
   private _canvas: HTMLCanvasElement;
   private _colormaps: Map<string, Colormap>;
   private _activeColormapName: string;
-  private _voiRange: ColobarVOIRange;
+  private _voiRange: ColorBarVOIRange;
   private _orientation: ColorBarOrientation;
   private _containerResizeObserver: ResizeObserver;
 
@@ -45,8 +46,8 @@ class ColorBar {
     id,
     colormaps,
     activeColormapName,
-    voiRange,
-    orientation,
+    voiRange = { min: 0, max: 1 },
+    orientation = ColorBarOrientation.Auto,
   }: ColorBarData) {
     this._id = id;
     this._canvas = this._createCanvasElement(id);
@@ -55,7 +56,7 @@ class ColorBar {
       new Map<string, Colormap>()
     );
     this._activeColormapName = activeColormapName ?? colormaps?.[0]?.Name;
-    this._voiRange = voiRange ?? { min: 0, max: 1 };
+    this._voiRange = voiRange;
     this._orientation = orientation;
     this._containerResizeObserver = new ResizeObserver(
       this._containerResizeCallback
@@ -108,6 +109,26 @@ class ColorBar {
     }
 
     this._orientation = orientation;
+    this.render();
+  }
+
+  public get voiRange() {
+    return { ...this._voiRange };
+  }
+
+  public set voiRange(voiRange: ColorBarVOIRange) {
+    const { min: currentMin, max: currentMax } = this._voiRange;
+
+    if (currentMin === voiRange.min && currentMax === voiRange.max) {
+      return;
+    }
+
+    if (voiRange.min >= voiRange.max) {
+      console.warn(`min must be smaller than max`);
+      return;
+    }
+
+    this._voiRange = voiRange;
     this.render();
   }
 
@@ -173,12 +194,10 @@ class ColorBar {
     const windowWidth = voiRange.max - voiRange.min;
     const { width, height } = this._canvas;
     const canvasContext = this._canvas.getContext('2d');
-    const orientation =
-      this._orientation ?? width >= height
-        ? ColorBarOrientation.Horizontal
-        : ColorBarOrientation.Vertical;
-    const maxValue =
-      orientation === ColorBarOrientation.Horizontal ? width : height;
+    const isHorizontal =
+      this._orientation === ColorBarOrientation.Horizontal ||
+      (this._orientation === ColorBarOrientation.Auto && width >= height);
+    const maxValue = isHorizontal ? width : height;
     const tRangeInc = 1 / (maxValue - 1);
 
     let previousColorPoint = undefined;
@@ -236,7 +255,7 @@ class ColorBar {
 
       canvasContext.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
 
-      if (orientation === ColorBarOrientation.Horizontal) {
+      if (isHorizontal) {
         canvasContext.fillRect(i, 0, 1, height);
       } else {
         canvasContext.fillRect(0, height - i - 1, width, 1);
@@ -244,15 +263,6 @@ class ColorBar {
 
       tRange += tRangeInc;
     }
-
-    // canvasContext.clearRect(0, 0, width, height);
-    // canvasContext.fillStyle = '#00f';
-    // canvasContext.strokeStyle = '#0f0';
-    // canvasContext.lineWidth = 5;
-    // canvasContext.beginPath();
-    // canvasContext.rect(0, 0, width, height);
-    // canvasContext.fill();
-    // canvasContext.stroke();
   }
 
   /**

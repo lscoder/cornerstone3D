@@ -1,3 +1,4 @@
+import vtkColormaps from '@kitware/vtk.js/Rendering/Core/ColorTransferFunction/ColorMaps';
 import {
   RenderingEngine,
   Types,
@@ -13,9 +14,9 @@ import {
   addDropdownToToolbar,
   setCtTransferFunctionForVolumeActor,
   setPetColorMapTransferFunctionForVolumeActor,
+  addSliderToToolbar,
 } from '../../../../utils/demo/helpers';
-import { ColorBar, ColorBarOrientation } from './ColorBar';
-import colormaps from './colormaps';
+import { ColorBar, ColorBarOrientation, Colormap } from './ColorBar';
 
 // This is for debugging purposes
 console.warn(
@@ -38,7 +39,15 @@ const ctVolumeId = `${volumeLoaderScheme}:${ctVolumeName}`; // VolumeId with loa
 const ptVolumeName = 'PT_VOLUME_ID';
 const ptVolumeId = `${volumeLoaderScheme}:${ptVolumeName}`;
 
-// ======== Set up page ======== //
+const colormaps = vtkColormaps.rgbPresetNames.map(
+  (presetName) => vtkColormaps.getPresetByName(presetName) as Colormap
+);
+let currentColormapName = colormaps[0].Name;
+let voiRangeMin = 0;
+let voiRangeMax = 1;
+
+// ==[ Set up page ]============================================================
+
 setTitleAndDescription(
   'Volume Viewport API With Multiple Volumes',
   'Demonstrates how to interact with a Volume viewport when using fusion.'
@@ -53,9 +62,41 @@ element.style.height = '500px';
 
 content.appendChild(element);
 
+const bottomContainer = document.createElement('div');
+const viewportTopContainer = document.createElement('div');
+const viewportLeftContainer = document.createElement('div');
+const viewportBottomContainer = document.createElement('div');
+const viewportRightContainer = document.createElement('div');
+
+content.appendChild(bottomContainer);
+
+const containers = [
+  bottomContainer,
+  viewportTopContainer,
+  viewportRightContainer,
+  viewportBottomContainer,
+  viewportLeftContainer,
+];
+
+const info = document.createElement('div');
+content.appendChild(info);
+
+const addInstruction = (instruction) => {
+  const node = document.createElement('p');
+  node.innerText = instruction;
+  info.appendChild(node);
+};
+
+addInstruction('- Select different colormaps');
+addInstruction('- Use the sliders to change the VOI min/max values');
+addInstruction(
+  `- The colobar can be moved to ${containers.length} different places`
+);
+
 const colorBar = new ColorBar({
   id: 'mainColorBar',
   colormaps,
+  activeColormapName: currentColormapName,
   // voiRange: { min: 0.25, max: 0.75 },
   // orientation: ColorBarOrientation.Vertical,
 });
@@ -65,21 +106,7 @@ const { rootNode } = colorBar;
 rootNode.draggable = true;
 rootNode.style.cursor = 'move';
 
-const outsideBottomContainer = document.createElement('div');
-const insideTopContainer = document.createElement('div');
-const insideLeftContainer = document.createElement('div');
-const insideBottomContainer = document.createElement('div');
-const insideRightContainer = document.createElement('div');
-
-const containers = [
-  outsideBottomContainer,
-  insideTopContainer,
-  insideRightContainer,
-  insideBottomContainer,
-  insideLeftContainer,
-];
-
-Object.assign(insideTopContainer.style, {
+Object.assign(viewportTopContainer.style, {
   position: 'absolute',
   top: '10px',
   left: 'calc(50% - 100px)',
@@ -87,7 +114,7 @@ Object.assign(insideTopContainer.style, {
   height: '30px',
 });
 
-Object.assign(insideLeftContainer.style, {
+Object.assign(viewportLeftContainer.style, {
   position: 'absolute',
   top: 'calc(50% - 100px)',
   left: '10px',
@@ -95,7 +122,7 @@ Object.assign(insideLeftContainer.style, {
   height: '200px',
 });
 
-Object.assign(insideBottomContainer.style, {
+Object.assign(viewportBottomContainer.style, {
   position: 'absolute',
   top: 'calc(100% - 40px)',
   left: 'calc(50% - 100px)',
@@ -103,7 +130,7 @@ Object.assign(insideBottomContainer.style, {
   height: '30px',
 });
 
-Object.assign(insideRightContainer.style, {
+Object.assign(viewportRightContainer.style, {
   position: 'absolute',
   top: 'calc(50% - 100px)',
   left: 'calc(100% - 40px)',
@@ -111,37 +138,52 @@ Object.assign(insideRightContainer.style, {
   height: '200px',
 });
 
-Object.assign(outsideBottomContainer.style, {
-  position: 'absolute',
-  top: 'calc(100% + 10px)',
-  left: '0px',
-  width: '100%',
+Object.assign(bottomContainer.style, {
+  width: '500px',
   height: '30px',
+  marginTop: '10px',
 });
 
 // Change the container style when it has/hasn't a colorbar attached to it
 const containersMutationObserver = new MutationObserver((mutations) => {
   mutations.forEach((mutation) => {
     const container = mutation.target as HTMLElement;
-    container.style.border = container.hasChildNodes()
-      ? 'solid 1px #555'
-      : 'none';
+    const hasChildNodes = container.hasChildNodes();
+
+    Object.assign(container.style, {
+      display: hasChildNodes ? 'block' : 'none',
+      border: hasChildNodes ? 'solid 1px #555' : 'none',
+    });
   });
 });
 
 containers.forEach((container) => {
+  const hasChildNodes = container.hasChildNodes();
+
+  Object.assign(container.style, {
+    boxSizing: 'border-box',
+    display: hasChildNodes ? 'block' : 'none',
+  });
+
   container.addEventListener('dragover', (evt) => evt.preventDefault());
   container.addEventListener('drop', (evt: DragEvent) => {
     const target = evt.target as HTMLElement;
     const currentParent = colorBar.rootNode.parentElement;
 
-    evt.preventDefault();
+    // If the element is dropped into the same container
+    // the `target` will be the canvas element
+    const isContainer = containers.some((container) => container === target);
+
+    if (!isContainer || currentParent === target) {
+      return;
+    }
 
     if (currentParent) {
       currentParent.style.border = 'solid 1px #eee';
     }
 
     colorBar.appendTo(target);
+    evt.preventDefault();
   });
 
   containersMutationObserver.observe(container, { childList: true });
@@ -149,8 +191,11 @@ containers.forEach((container) => {
 
 rootNode.addEventListener('dragstart', (evt) => {
   evt.dataTransfer.effectAllowed = 'move';
-  containers.forEach(
-    (container) => (container.style.backgroundColor = 'rgba(0, 255, 0, 0.2)')
+  containers.forEach((container) =>
+    Object.assign(container.style, {
+      display: 'block',
+      backgroundColor: 'rgba(0, 255, 0, 0.2)',
+    })
   );
 });
 
@@ -158,11 +203,24 @@ rootNode.addEventListener('dragend', () => {
   containers.forEach(
     (container) => (container.style.backgroundColor = 'unset')
   );
+
+  containers.forEach((container) =>
+    Object.assign(container.style, {
+      display: container.hasChildNodes() ? 'block' : 'none',
+      backgroundColor: 'unset',
+    })
+  );
 });
 
-// ============================= //
+const runTestsButton = document.createElement('button');
 
-// Buttons
+runTestsButton.style.marginTop = '20px';
+runTestsButton.textContent = 'Run dev tests';
+runTestsButton.addEventListener('click', () => runTests());
+content.appendChild(runTestsButton);
+
+// ==[ Toolbar ]================================================================
+
 addButtonToToolbar({
   title: 'Set CT VOI Range',
   onClick: () => {
@@ -202,7 +260,7 @@ let fused = false;
 
 addButtonToToolbar({
   title: 'toggle PET',
-  onClick: () => {
+  onClick: async () => {
     // Get the rendering engine
     const renderingEngine = getRenderingEngine(renderingEngineId);
 
@@ -218,7 +276,7 @@ addButtonToToolbar({
     } else {
       // Add the PET volume to the viewport. It is in the same DICOM Frame Of Reference/worldspace
       // If it was in a different frame of reference, you would need to register it first.
-      viewport.addVolumes(
+      await viewport.addVolumes(
         [
           {
             volumeId: ptVolumeId,
@@ -227,6 +285,8 @@ addButtonToToolbar({
         ],
         true
       );
+
+      // Update colormap
 
       fused = true;
     }
@@ -286,91 +346,209 @@ addDropdownToToolbar({
   },
 });
 
+addDropdownToToolbar({
+  options: {
+    values: colormaps.map((cm) => cm.Name),
+    defaultValue: currentColormapName,
+  },
+  style: {
+    maxWidth: '100px',
+  },
+  onSelectedValueChange: (selectedValue) => {
+    setColormap(<string>selectedValue);
+  },
+});
+
+addSliderToToolbar({
+  title: 'VOI min',
+  range: [0, 1],
+  step: 0.05,
+  defaultValue: voiRangeMin,
+  onSelectedValueChange: (value) => {
+    voiRangeMin = parseFloat(value);
+    colorBar.voiRange = { min: voiRangeMin, max: voiRangeMax };
+  },
+});
+
+addSliderToToolbar({
+  title: 'VOI max',
+  range: [0, 1],
+  step: 0.05,
+  defaultValue: voiRangeMax,
+  onSelectedValueChange: (value) => {
+    voiRangeMax = parseFloat(value);
+    colorBar.voiRange = { min: voiRangeMin, max: voiRangeMax };
+  },
+});
+
+// ==[ Dev Tests ]==============================================================
+
+async function testOrientations() {
+  const setOrientation = async (orientation) => {
+    console.log(`Orientation: ${orientation}`);
+    colorBar.orientation = orientation;
+    await pause(500);
+  };
+
+  await pause(500);
+  await setOrientation(ColorBarOrientation.Vertical);
+  await setOrientation(ColorBarOrientation.Horizontal);
+  await setOrientation(ColorBarOrientation.Vertical);
+  await setOrientation(ColorBarOrientation.Auto);
+}
+
+async function testVoiRange() {
+  console.log('Testing VOI range');
+
+  const numLoops = 4;
+  const numMoves = 60;
+  const pauseTime = 1000 / 60; // (1000 / fps)
+  const windowWidth = 0.5;
+
+  for (let numLoop = 0; numLoop < numLoops; numLoop++) {
+    const leftToRight = !(numLoop % 2);
+    const iStart = numLoop ? 1 : Math.floor(numMoves / 2);
+    const iEnd = numLoop === numLoops - 1 ? Math.floor(numMoves / 2) : numMoves;
+
+    for (let i = iStart; i < iEnd; i++) {
+      const position = leftToRight ? i : numMoves - i - 1;
+      const windowCenter = position * (1 / (numMoves - 1));
+      const min = windowCenter - windowWidth / 2;
+      const max = min + windowWidth;
+
+      colorBar.voiRange = { min, max };
+
+      await pause(pauseTime);
+    }
+  }
+
+  // Restore voiRange to max
+  colorBar.voiRange = { min: 0, max: 1 };
+}
+
 // Tests to make sure it works when resizing the container or attaching to a new container
-async function testPositions() {
+async function testContainers() {
   await pause(500);
 
-  console.log('>>>>> appendTo(insideTopContainer)');
-  colorBar.appendTo(insideTopContainer);
+  console.log('appendTo(viewportTopContainer)');
+  colorBar.appendTo(viewportTopContainer);
 
   await pause(500);
 
-  console.log('>>>>> update insideTopContainer size');
-  Object.assign(insideTopContainer.style, {
+  console.log('update viewportTopContainer size');
+  Object.assign(viewportTopContainer.style, {
     width: '400px',
     left: 'calc(50% - 200px)',
   });
 
   await pause(500);
 
-  console.log('>>>>> appendTo(insideRightContainer)');
-  colorBar.appendTo(insideRightContainer);
-  Object.assign(insideTopContainer.style, {
+  console.log('appendTo(viewportRightContainer)');
+  colorBar.appendTo(viewportRightContainer);
+  Object.assign(viewportTopContainer.style, {
     width: '200px',
     left: 'calc(50% - 100px)',
   });
 
   await pause(500);
 
-  console.log('>>>>> update insideRightContainer size');
-  Object.assign(insideRightContainer.style, {
+  console.log('update viewportRightContainer size');
+  Object.assign(viewportRightContainer.style, {
     height: '400px',
     top: 'calc(50% - 200px)',
   });
 
   await pause(500);
 
-  console.log('>>>>> appendTo(insideBottomContainer)');
-  colorBar.appendTo(insideBottomContainer);
-  Object.assign(insideRightContainer.style, {
+  console.log('appendTo(viewportBottomContainer)');
+  colorBar.appendTo(viewportBottomContainer);
+  Object.assign(viewportRightContainer.style, {
     height: '200px',
     top: 'calc(50% - 100px)',
   });
 
   await pause(500);
 
-  console.log('>>>>> update insideBottomContainer size');
-  Object.assign(insideBottomContainer.style, {
+  console.log('update viewportBottomContainer size');
+  Object.assign(viewportBottomContainer.style, {
     width: '400px',
     left: 'calc(50% - 200px)',
   });
 
   await pause(500);
 
-  console.log('>>>>> appendTo(insideLeftContainer)');
-  colorBar.appendTo(insideLeftContainer);
-  Object.assign(insideBottomContainer.style, {
+  console.log('appendTo(viewportLeftContainer)');
+  colorBar.appendTo(viewportLeftContainer);
+  Object.assign(viewportBottomContainer.style, {
     width: '200px',
     left: 'calc(50% - 100px)',
   });
 
   await pause(500);
 
-  console.log('>>>>> update insideLeftContainer size');
-  Object.assign(insideLeftContainer.style, {
+  console.log('update viewportLeftContainer size');
+  Object.assign(viewportLeftContainer.style, {
     height: '400px',
     top: 'calc(50% - 200px)',
   });
 
   await pause(500);
 
-  colorBar.appendTo(insideBottomContainer);
-  Object.assign(insideLeftContainer.style, {
+  colorBar.appendTo(viewportBottomContainer);
+  Object.assign(viewportLeftContainer.style, {
     height: '200px',
     top: 'calc(50% - 100px)',
   });
 }
 
-async function testColorMaps() {
+async function testColormaps() {
   for (let i = 1, len = colormaps.length; i < len; i++) {
-    console.log(colormaps[i].Name);
+    console.log(`Colormap: ${colormaps[i].Name}`);
     colorBar.activeColormapName = colormaps[i].Name;
-    await pause(500);
+    await pause(100);
   }
 
   // Back to the first colormap
-  console.log(colormaps[0].Name);
+  console.log(`Colormap: ${colormaps[0].Name}`);
   colorBar.activeColormapName = colormaps[0].Name;
+}
+
+async function runTests() {
+  const currentParent = colorBar.rootNode?.parentElement;
+
+  console.log('Dev tests started');
+
+  await testContainers();
+
+  // Add it back to its parent
+  if (currentParent) {
+    colorBar.appendTo(currentParent);
+  }
+
+  await testColormaps();
+  await testOrientations();
+  await testVoiRange();
+
+  console.log('Dev tests complete');
+}
+
+// =============================================================================
+
+function setColormap(colormapName: string) {
+  currentColormapName = colormapName;
+  colorBar.activeColormapName = colormapName;
+
+  // Get the rendering engine
+  const renderingEngine = getRenderingEngine(renderingEngineId);
+
+  // Get the volume viewport
+  const viewport = <Types.IVolumeViewport>(
+    renderingEngine.getViewport(viewportId)
+  );
+
+  viewport.setProperties({ colormap: { name: colormapName } }, ptVolumeId);
+
+  viewport.render();
 }
 
 /**
@@ -448,15 +626,12 @@ async function run() {
 
   // Append the containers after initializing the viewport to keep them over
   // all other viewport elements
-  element.appendChild(insideTopContainer);
-  element.appendChild(insideRightContainer);
-  element.appendChild(insideBottomContainer);
-  element.appendChild(insideLeftContainer);
-  element.appendChild(outsideBottomContainer);
+  element.appendChild(viewportTopContainer);
+  element.appendChild(viewportRightContainer);
+  element.appendChild(viewportBottomContainer);
+  element.appendChild(viewportLeftContainer);
 
-  await testPositions();
-  colorBar.appendTo(outsideBottomContainer);
-  await testColorMaps();
+  colorBar.appendTo(viewportRightContainer);
 }
 
 run();

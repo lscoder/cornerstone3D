@@ -6,6 +6,8 @@ export default function setPetColorMapTransferFunctionForVolumeActor(
   volumeInfo
 ) {
   const { volumeActor, preset } = volumeInfo;
+  debugger;
+  console.log('>>>>> preset:', preset);
   const mapper = volumeActor.getMapper();
   mapper.setSampleDistance(1.0);
 
