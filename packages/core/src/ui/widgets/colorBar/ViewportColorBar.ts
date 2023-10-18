@@ -53,7 +53,8 @@ class ViewportColorBar extends ColorBar {
     const { Modality: modality } = volume.metadata;
 
     if (modality === 'PT') {
-      const ptMultiplier = 1 / 5;
+      const ptMultiplier =
+        5 / Math.max(this.containerSize.width, this.containerSize.height);
 
       return isPreScaled
         ? [ptMultiplier, ptMultiplier]
@@ -88,11 +89,6 @@ class ViewportColorBar extends ColorBar {
         viewport.renderingEngineId
       );
 
-      // eslint-disable-next-line
-      console.log(
-        `>>>>> voiChanged :: ${volumeId.slice(-12)} :: voiRange:`,
-        voiRange
-      );
       viewport.setProperties({ voiRange }, volumeId);
       viewportsContainingVolumeUID.forEach((vp) => vp.render());
     }
@@ -168,12 +164,6 @@ class ViewportColorBar extends ColorBar {
       return;
     }
 
-    // console.log('>>>>> voiModifiedCallback :: evt:', evt);
-    // eslint-disable-next-line
-    console.log(
-      `>>>>> voiModifiedCallback :: ${volumeId.slice(-12)} :: voiRange:`,
-      evt.detail.range
-    );
     this.voiRange = range;
   };
 

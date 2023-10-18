@@ -115,12 +115,11 @@ class ColorBarCanvas {
   public set voiRange(voiRange: ColorBarVOIRange) {
     const { lower: currentLower, upper: currentUpper } = this._voiRange;
 
-    if (currentLower === voiRange.lower && currentUpper === voiRange.upper) {
+    if (voiRange.lower === currentLower && voiRange.upper === currentUpper) {
       return;
     }
 
     this._voiRange = getValidRange(voiRange);
-    // this.voiChanged(this._voiRange);
     this.render();
   }
 

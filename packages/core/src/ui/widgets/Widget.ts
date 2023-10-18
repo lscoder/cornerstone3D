@@ -3,7 +3,7 @@ export type WidgetProps = {
   container?: HTMLElement;
 };
 
-type Size = {
+type WidgetSize = {
   width: number;
   height: number;
 };
@@ -11,13 +11,13 @@ type Size = {
 class Widget {
   private _id: string;
   private _rootElement: HTMLElement;
-  private _containerSize: Size;
+  private _containerSize: WidgetSize;
   private _containerResizeObserver: ResizeObserver;
 
   constructor({ id, container }: WidgetProps) {
     this._id = id;
-    this._rootElement = this.createRootElement();
     this._containerSize = { width: 0, height: 0 };
+    this._rootElement = this.createRootElement();
     this._containerResizeObserver = new ResizeObserver(
       this._containerResizeCallback
     );
@@ -72,7 +72,7 @@ class Widget {
     resizeObserver.observe(container);
   }
 
-  protected get containerSize(): Size {
+  protected get containerSize(): WidgetSize {
     // Returns a copy to prevent any external change
     return { ...this._containerSize };
   }
