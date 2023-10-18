@@ -130,7 +130,7 @@ async function init(configuration = config): Promise<boolean> {
     }
   }
 
-  setUseSharedArrayBuffer(sharedArrayBufferMode);
+  setUseSharedArrayBuffer(false);
 
   csRenderInitialized = true;
   return csRenderInitialized;

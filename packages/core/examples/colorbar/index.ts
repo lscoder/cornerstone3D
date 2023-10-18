@@ -6,6 +6,7 @@ import {
   volumeLoader,
   getRenderingEngine,
 } from '@cornerstonejs/core';
+import * as cornerstoneTools from '@cornerstonejs/tools';
 import {
   initDemo,
   createImageIdsAndCacheMetaData,
@@ -24,6 +25,17 @@ console.warn(
   'Click on index.ts to open source code for this example --------->'
 );
 
+const {
+  PanTool,
+  WindowLevelTool,
+  StackScrollMouseWheelTool,
+  ZoomTool,
+  ToolGroupManager,
+  Enums: csToolsEnums,
+} = cornerstoneTools;
+
+const { MouseBindings } = csToolsEnums;
+
 const pause = (interval) =>
   new Promise((resolve) => setTimeout(resolve, interval));
 
@@ -31,6 +43,7 @@ const { ViewportType } = Enums;
 const renderingEngineId = 'myRenderingEngine';
 const stackViewportId = 'CT_STACK';
 const volumeViewportId = 'CT_VOLUME_SAGITTAL';
+const volumeToolGroupId = 'VOLUME_TOOL_GROUP_ID';
 
 // Define unique ids for the volumes
 const volumeLoaderScheme = 'cornerstoneStreamingImageVolume'; // Loader id which defines which volume loader to use
@@ -45,8 +58,10 @@ const colormaps = vtkColormaps.rgbPresetNames.map(
   (presetName) => vtkColormaps.getPresetByName(presetName) as Colormap
 );
 let currentPTColormapName = 'Black-Body Radiation';
-let voiRangeMin = 0;
-let voiRangeMax = 1;
+let ctColorBar = null;
+let ptColorBar = null;
+const voiRangeMin = 0;
+const voiRangeMax = 1;
 
 // ==[ Set up page ]============================================================
 
@@ -176,6 +191,7 @@ containers.forEach((container) => {
   Object.assign(container.style, {
     boxSizing: 'border-box',
     display: hasChildNodes ? 'block' : 'none',
+    cursor: 'initial',
   });
 
   // container.addEventListener('dragover', (evt) => evt.preventDefault());
@@ -262,76 +278,73 @@ content.appendChild(runTestsButton);
 
 // ==[ Toolbar ]================================================================
 
-addButtonToToolbar({
-  title: 'Set CT VOI Range',
-  onClick: () => {
-    // Get the rendering engine
-    const renderingEngine = getRenderingEngine(renderingEngineId);
+// addButtonToToolbar({
+//   title: 'Set CT VOI Range',
+//   onClick: () => {
+//     // Get the rendering engine
+//     const renderingEngine = getRenderingEngine(renderingEngineId);
 
-    // Get the stack viewport
-    const viewport = <Types.IVolumeViewport>(
-      renderingEngine.getViewport(volumeViewportId)
-    );
+//     // Get the stack viewport
+//     const viewport = <Types.IVolumeViewport>(
+//       renderingEngine.getViewport(volumeViewportId)
+//     );
 
-    viewport.setProperties({ voiRange: { lower: -1500, upper: 2500 } });
-    viewport.render();
-  },
-});
+//     viewport.setProperties({ voiRange: { lower: -1500, upper: 2500 } });
+//     viewport.render();
+//   },
+// });
 
-addButtonToToolbar({
-  title: 'Reset Viewport',
-  onClick: () => {
-    // Get the rendering engine
-    const renderingEngine = getRenderingEngine(renderingEngineId);
+// addButtonToToolbar({
+//   title: 'Reset Viewport',
+//   onClick: () => {
+//     // Get the rendering engine
+//     const renderingEngine = getRenderingEngine(renderingEngineId);
 
-    // Get the volume viewport
-    const viewport = <Types.IVolumeViewport>(
-      renderingEngine.getViewport(volumeViewportId)
-    );
+//     // Get the volume viewport
+//     const viewport = <Types.IVolumeViewport>(
+//       renderingEngine.getViewport(volumeViewportId)
+//     );
 
-    // Resets the viewport's camera
-    viewport.resetCamera();
-    // TODO reset the viewport properties, we don't have API for this.
+//     // Resets the viewport's camera
+//     viewport.resetCamera();
+//     // TODO reset the viewport properties, we don't have API for this.
 
-    viewport.render();
-  },
-});
+//     viewport.render();
+//   },
+// });
 
-let fused = false;
+// const fused = false;
 
-addButtonToToolbar({
-  title: 'toggle PET',
-  onClick: async () => {
-    // Get the rendering engine
-    const renderingEngine = getRenderingEngine(renderingEngineId);
-
-    // Get the volume viewport
-    const viewport = <Types.IVolumeViewport>(
-      renderingEngine.getViewport(volumeViewportId)
-    );
-    if (fused) {
-      // Removes the PT actor from the scene
-      viewport.removeVolumeActors([ptVolumeId], true);
-
-      fused = false;
-    } else {
-      // Add the PET volume to the viewport. It is in the same DICOM Frame Of Reference/worldspace
-      // If it was in a different frame of reference, you would need to register it first.
-      await viewport.addVolumes(
-        [
-          {
-            volumeId: ptVolumeId,
-            callback: setPetColorMapTransferFunctionForVolumeActor,
-          },
-        ],
-        true
-      );
-
-      setPTColormap(currentPTColormapName);
-      fused = true;
-    }
-  },
-});
+// addButtonToToolbar({
+//   title: 'toggle PET',
+//   onClick: async () => {
+//     // Get the rendering engine
+//     const renderingEngine = getRenderingEngine(renderingEngineId);
+//     // Get the volume viewport
+//     const viewport = <Types.IVolumeViewport>(
+//       renderingEngine.getViewport(volumeViewportId)
+//     );
+//     if (fused) {
+//       // Removes the PT actor from the scene
+//       viewport.removeVolumeActors([ptVolumeId], true);
+//       fused = false;
+//     } else {
+//       // Add the PET volume to the viewport. It is in the same DICOM Frame Of Reference/worldspace
+//       // If it was in a different frame of reference, you would need to register it first.
+//       await viewport.addVolumes(
+//         [
+//           {
+//             volumeId: ptVolumeId,
+//             callback: setPetColorMapTransferFunctionForVolumeActor,
+//           },
+//         ],
+//         true
+//       );
+//       setPTColormap(currentPTColormapName);
+//       fused = true;
+//     }
+//   },
+// });
 
 const orientationOptions = {
   axial: 'axial',
@@ -392,34 +405,34 @@ addDropdownToToolbar({
     defaultValue: currentPTColormapName,
   },
   style: {
-    maxWidth: '100px',
+    maxWidth: '200px',
   },
   onSelectedValueChange: (selectedValue) => {
-    setPTColormap(<string>selectedValue);
+    // setPTColormap(<string>selectedValue);
   },
 });
 
-addSliderToToolbar({
-  title: 'VOI min',
-  range: [0, 1],
-  step: 0.05,
-  defaultValue: voiRangeMin,
-  onSelectedValueChange: (value) => {
-    voiRangeMin = parseFloat(value);
-    // ptColorBar.voiRange = { min: voiRangeMin, max: voiRangeMax };
-  },
-});
+// addSliderToToolbar({
+//   title: 'VOI min',
+//   range: [0, 1],
+//   step: 0.05,
+//   defaultValue: voiRangeMin,
+//   onSelectedValueChange: (value) => {
+//     voiRangeMin = parseFloat(value);
+//     // ptColorBar.voiRange = { min: voiRangeMin, max: voiRangeMax };
+//   },
+// });
 
-addSliderToToolbar({
-  title: 'VOI max',
-  range: [0, 1],
-  step: 0.05,
-  defaultValue: voiRangeMax,
-  onSelectedValueChange: (value) => {
-    voiRangeMax = parseFloat(value);
-    // ptColorBar.voiRange = { min: voiRangeMin, max: voiRangeMax };
-  },
-});
+// addSliderToToolbar({
+//   title: 'VOI max',
+//   range: [0, 1],
+//   step: 0.05,
+//   defaultValue: voiRangeMax,
+//   onSelectedValueChange: (value) => {
+//     voiRangeMax = parseFloat(value);
+//     // ptColorBar.voiRange = { min: voiRangeMin, max: voiRangeMax };
+//   },
+// });
 
 // ==[ Dev Tests ]==============================================================
 
@@ -549,7 +562,10 @@ async function runTests() {
 
 function setPTColormap(colormapName: string) {
   currentPTColormapName = colormapName;
-  // ptColorBar.activeColormapName = colormapName;
+
+  if (ptColorBar) {
+    ptColorBar.activeColormapName = colormapName;
+  }
 
   // Get the rendering engine
   const renderingEngine = getRenderingEngine(renderingEngineId);
@@ -569,6 +585,52 @@ function setPTColormap(colormapName: string) {
 async function run() {
   // Init Cornerstone and related libraries
   await initDemo();
+
+  // Add tools to Cornerstone3D
+  cornerstoneTools.addTool(PanTool);
+  cornerstoneTools.addTool(WindowLevelTool);
+  cornerstoneTools.addTool(StackScrollMouseWheelTool);
+  cornerstoneTools.addTool(ZoomTool);
+
+  // Define a tool group, which defines how mouse events map to tool commands for
+  // Any viewport using the group
+  const volumeToolGroup = ToolGroupManager.createToolGroup(volumeToolGroupId);
+
+  // Add tools to the tool group
+  volumeToolGroup.addTool(WindowLevelTool.toolName);
+  volumeToolGroup.addTool(PanTool.toolName);
+  volumeToolGroup.addTool(ZoomTool.toolName);
+  volumeToolGroup.addTool(StackScrollMouseWheelTool.toolName);
+
+  // Set the initial state of the tools, here all tools are active and bound to
+  // Different mouse inputs
+  volumeToolGroup.setToolActive(WindowLevelTool.toolName, {
+    bindings: [
+      {
+        mouseButton: MouseBindings.Primary, // Left Click
+      },
+    ],
+  });
+
+  volumeToolGroup.setToolActive(PanTool.toolName, {
+    bindings: [
+      {
+        mouseButton: MouseBindings.Auxiliary, // Middle Click
+      },
+    ],
+  });
+
+  volumeToolGroup.setToolActive(ZoomTool.toolName, {
+    bindings: [
+      {
+        mouseButton: MouseBindings.Secondary, // Right Click
+      },
+    ],
+  });
+
+  // As the Stack Scroll mouse wheel is a tool using the `mouseWheelCallback`
+  // hook instead of mouse buttons, it does not need to assign any mouse button.
+  volumeToolGroup.setToolActive(StackScrollMouseWheelTool.toolName);
 
   const wadoRsRoot = 'https://d3t6nz73ql33tx.cloudfront.net/dicomweb';
   const StudyInstanceUID =
@@ -605,6 +667,9 @@ async function run() {
 
   renderingEngine.enableElement(viewportInput);
 
+  // Set the tool group on the viewport
+  volumeToolGroup.addViewport(volumeViewportId, renderingEngineId);
+
   // Get the stack viewport that was created
   const viewport = <Types.IVolumeViewport>(
     renderingEngine.getViewport(volumeViewportId)
@@ -618,16 +683,6 @@ async function run() {
   // Set the volume to load
   ctVolume.load();
 
-  // Set the volume on the viewport
-  await viewport.setVolumes([
-    { volumeId: ctVolumeId, callback: setCtTransferFunctionForVolumeActor },
-  ]);
-
-  // Render the image
-  renderingEngine.render();
-
-  // Load the PT in the background as we know we'll need it
-
   // Define a volume in memory
   const ptVolume = await volumeLoader.createAndCacheVolume(ptVolumeId, {
     imageIds: ptImageIds,
@@ -636,6 +691,20 @@ async function run() {
   // Set the volume to load
   ptVolume.load();
 
+  // Set the volume on the viewport
+  await viewport.setVolumes([
+    { volumeId: ctVolumeId, callback: setCtTransferFunctionForVolumeActor },
+    {
+      volumeId: ptVolumeId,
+      callback: setPetColorMapTransferFunctionForVolumeActor,
+    },
+  ]);
+
+  setPTColormap(currentPTColormapName);
+
+  // Render the image
+  renderingEngine.render();
+
   // Append the containers after initializing the viewport to keep them over
   // all other viewport elements
   element.appendChild(rightTopContainer);
@@ -643,21 +712,27 @@ async function run() {
   element.appendChild(bottomLeftContainer);
   element.appendChild(bottomRightContainer);
 
-  const ctColorBar = new ViewportColorBar({
+  ctColorBar = new ViewportColorBar({
     id: 'ctColorBar',
     element,
+    container: rightTopContainer,
     volumeId: ctVolumeId,
-    // viewportId: volumeViewportId,
-    // renderingEngineId,
-    // range: { lower: -2000, upper: 2000 },
-    // voiRange: { lower: -600, upper: 0 },
     colormaps,
     activeColormapName: 'Grayscale',
+  });
+
+  ptColorBar = new ViewportColorBar({
+    id: 'ptColorBar',
+    element,
+    container: rightBottomContainer,
+    volumeId: ptVolumeId,
+    colormaps,
+    activeColormapName: currentPTColormapName,
     // voiRange: { min: 0.25, max: 0.75 },
     // orientation: ColorBarOrientation.Vertical,
   });
 
-  ctColorBar.appendTo(rightTopContainer);
+  // ctColorBar.appendTo(rightTopContainer);
   // ptColorBar.appendTo(rightBottomContainer);
 }
 

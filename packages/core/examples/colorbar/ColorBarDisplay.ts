@@ -1,4 +1,4 @@
-class ColorBarDisplay {
+class ColorBarVOIDisplay {
   constructor() {
     //
   }
@@ -17,4 +17,4 @@ class ColorBarDisplay {
   }
 }
 
-export { ColorBarDisplay as default, ColorBarDisplay };
+export { ColorBarVOIDisplay as default, ColorBarVOIDisplay };

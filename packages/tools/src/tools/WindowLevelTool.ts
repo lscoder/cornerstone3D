@@ -145,12 +145,9 @@ class WindowLevelTool extends BaseTool {
   }
 
   getNewRange({ viewport, deltaPointsCanvas, volumeId, lower, upper }) {
-    console.log('>>>>> deltaPointsCanvas :: ', deltaPointsCanvas);
-    console.log(`>>>>> voiRange :: ${lower} x ${upper}`);
     const multiplier =
       this._getMultiplierFromDynamicRange(viewport, volumeId) ||
       DEFAULT_MULTIPLIER;
-    console.log('>>>>> multiplier :: ', multiplier);
 
     const wwDelta = deltaPointsCanvas[0] * multiplier;
     const wcDelta = deltaPointsCanvas[1] * multiplier;

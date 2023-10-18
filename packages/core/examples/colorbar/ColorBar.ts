@@ -2,7 +2,7 @@ import { vec2 } from 'gl-matrix';
 import { utilities, Types } from '@cornerstonejs/core';
 import { EventListenersManager } from './EventListeners';
 
-const DEFAULT_MULTIPLIER = 4;
+const DEFAULT_MULTIPLIER = 1;
 
 type WidgetPoints = {
   page: Types.Point2;
@@ -31,6 +31,7 @@ export type Colormap = {
 
 export interface ColorBarProps {
   id?: string;
+  container?: HTMLElement;
   colormaps: Colormap[];
   activeColormapName?: string;
   range?: ColorBarRange;
@@ -67,6 +68,7 @@ class ColorBar {
 
   constructor({
     id,
+    container,
     colormaps,
     activeColormapName,
     range = { lower: 0, upper: 1 },
@@ -89,10 +91,20 @@ class ColorBar {
       this._containerResizeCallback
     );
 
-    // DEBUG
-    this._rootElement.id = `colorBarRoot_${id}`;
+    this._addRootElementEventListeners();
+    this._rootElement.appendChild(this._canvas);
 
+    if (container) {
+      this.appendTo(container);
+    }
+
+    // DEBUG
     this.init();
+  }
+
+  // DEBUG
+  protected init() {
+    //
   }
 
   public get id() {
@@ -171,7 +183,7 @@ class ColorBar {
     }
 
     this._voiRange = getValidRange(voiRange);
-    this.onVOIChanged(this._voiRange);
+    this.voiChanged(this._voiRange);
     this.render();
   }
 
@@ -235,12 +247,12 @@ class ColorBar {
     };
 
     const { _range: range, _voiRange: voiRange } = this;
+    // const { _voiRange: voiRange } = this;
+    // const range = { ...voiRange };
     const { windowWidth } = utilities.windowLevel.toWindowLevel(
       voiRange.lower,
       voiRange.upper
     );
-    // const windowWidth = voiRange.upper - voiRange.lower;
-    console.log('>>>>> render :: windowWidth ::', windowWidth);
     const { width, height } = this._canvas;
     const canvasContext = this._canvas.getContext('2d');
     const isHorizontal =
@@ -339,11 +351,6 @@ class ColorBar {
     this._removeRootElementEventListeners();
   }
 
-  protected init() {
-    this._addRootElementEventListeners();
-    this._rootElement.appendChild(this._canvas);
-  }
-
   protected createRootElement(): HTMLElement {
     const rootElement = document.createElement('div');
 
@@ -355,7 +362,7 @@ class ColorBar {
     return rootElement;
   }
 
-  protected resize(width: number, height: number) {
+  protected containerResized(width: number, height: number) {
     const { _canvas: canvas } = this;
 
     if (canvas.width === width && canvas.height === height) {
@@ -367,7 +374,11 @@ class ColorBar {
     this.render();
   }
 
-  protected onVOIChanged(voiRange: ColorBarVOIRange) {
+  protected getVOIMultipliers(): [number, number] {
+    return [DEFAULT_MULTIPLIER, DEFAULT_MULTIPLIER];
+  }
+
+  protected voiChanged(voiRange: ColorBarVOIRange) {
     // TODO: override voiRange property?
   }
 
@@ -400,7 +411,7 @@ class ColorBar {
   };
 
   private _mouseDragCallback = (evt, initialState) => {
-    const multiplier = this.getMultiplier();
+    const multipliers = this.getVOIMultipliers();
     const currentPoints = this._getPointsFromMouseEvent(evt);
     const { points: startPoints, voiRange: startVOIRange } = initialState;
     const canvasDelta = vec2.sub(
@@ -409,8 +420,12 @@ class ColorBar {
       startPoints.local
     );
 
-    const wwDelta = canvasDelta[0] * multiplier;
-    const wcDelta = canvasDelta[1] * multiplier;
+    const wwDelta = canvasDelta[0] * multipliers[0];
+    const wcDelta = canvasDelta[1] * multipliers[1];
+
+    if (!wwDelta && !wcDelta) {
+      return;
+    }
 
     const { lower: voiLower, upper: voiUpper } = startVOIRange;
     let { windowWidth, windowCenter } = utilities.windowLevel.toWindowLevel(
@@ -426,14 +441,11 @@ class ColorBar {
       windowCenter
     );
 
+    console.log('>>>>> drag :: newVoiRange :: ', newVoiRange);
     this.voiRange = newVoiRange;
 
     evt.stopPropagation();
   };
-
-  protected getMultiplier() {
-    return DEFAULT_MULTIPLIER;
-  }
 
   private _mouseUpCallback = (evt) => {
     this._removeVOIEventListeners();
@@ -509,7 +521,8 @@ class ColorBar {
       height = contentBoxSize[0].blockSize;
     }
 
-    this.resize(width, height);
+    // this.resize(width, height);
+    this.containerResized(width, height);
   };
 }
 

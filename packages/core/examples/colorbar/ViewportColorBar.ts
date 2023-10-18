@@ -6,23 +6,21 @@ import {
   Enums,
   utilities,
   getEnabledElement,
+  cache,
 } from '@cornerstonejs/core';
 import { ColorBar, ColorBarProps, ColorBarVOIRange } from './ColorBar';
 
 const { Events } = Enums;
+const DEFAULT_MULTIPLIER = 4;
 
 export interface ViewportColorBarProps extends ColorBarProps {
   element: HTMLDivElement;
   volumeId?: string;
-  // viewportId: string;
-  // renderingEngineId: string;
 }
 
 class ViewportColorBar extends ColorBar {
   private _element: HTMLDivElement;
   private _volumeId: string;
-  // private _viewportId: string;
-  // private _renderingEngineId: string;
 
   constructor(props: ViewportColorBarProps) {
     super({
@@ -31,21 +29,82 @@ class ViewportColorBar extends ColorBar {
       voiRange: ViewportColorBar._getVOIRange(props.element, props.volumeId),
     });
 
-    // const range = this._getVOIRange(props.element);
-    // console.log(range);
-
     this._element = props.element;
     this._volumeId = props.volumeId;
-    // this._viewportId = viewportColorBarData.viewportId;
-    // this._renderingEngineId = viewportColorBarData.renderingEngineId;
 
     this.init();
     this._addCornerstoneEventListener();
   }
 
-  static _getRange(element, volumeId) {
-    return { lower: -1000, upper: 1000 };
+  public get element() {
+    return this._element;
+  }
 
+  public get enabledElement() {
+    return getEnabledElement(this._element);
+  }
+
+  protected init() {
+    super.init();
+    console.log('>>>>> init :: this', this);
+  }
+
+  protected getVOIMultipliers(): [number, number] {
+    const { viewport } = this.enabledElement;
+    // const {actor: volumeActor } = viewport.getActor(this._volumeId)
+    const volume = cache.getVolume(this._volumeId);
+    const { scaling } = volume;
+    const isPreScaled = !!scaling && Object.keys(scaling).length > 0;
+    const { Modality: modality } = volume.metadata;
+
+    if (modality === 'PT') {
+      const ptMultiplier = 1 / 5;
+
+      return isPreScaled
+        ? [ptMultiplier, ptMultiplier]
+        : [DEFAULT_MULTIPLIER, DEFAULT_MULTIPLIER];
+    }
+
+    // eslint-disable-next-line
+    console.log(
+      `>>>>> volumeId (${modality}, ${isPreScaled}) :: ${this._volumeId.slice(
+        -20
+      )} :`,
+      volume
+    );
+
+    return [DEFAULT_MULTIPLIER, DEFAULT_MULTIPLIER];
+  }
+
+  protected voiChanged(voiRange: ColorBarVOIRange) {
+    super.voiChanged(voiRange);
+
+    const { viewport } = this.enabledElement;
+
+    if (viewport instanceof StackViewport) {
+      viewport.setProperties({
+        voiRange: voiRange,
+      });
+      viewport.render();
+    } else if (viewport instanceof VolumeViewport) {
+      const { _volumeId: volumeId } = this;
+      const viewportsContainingVolumeUID = utilities.getViewportsWithVolumeId(
+        volumeId,
+        viewport.renderingEngineId
+      );
+
+      // eslint-disable-next-line
+      console.log(
+        `>>>>> voiChanged :: ${volumeId.slice(-12)} :: voiRange:`,
+        voiRange
+      );
+      viewport.setProperties({ voiRange }, volumeId);
+      viewportsContainingVolumeUID.forEach((vp) => vp.render());
+    }
+  }
+
+  private static _getRange(element, volumeId) {
+    const defaultValue = { lower: -1000, upper: 1000 };
     const enabledElement = getEnabledElement(element);
     const { viewport } = enabledElement;
 
@@ -54,21 +113,21 @@ class ViewportColorBar extends ColorBar {
       : viewport.getDefaultActor();
 
     if (!actor) {
-      return { lower: -1000, upper: 1000 };
+      return defaultValue;
     }
 
     const imageData = actor.actor.getMapper().getInputData();
     const range = imageData.getPointData().getScalars().getRange();
 
-    (window as any).actor = actor;
-    console.log('>>>>> range :: ', range);
+    // console.log(`>>>>> range :: ${volumeId.slice(-20)} :: `, range);
 
     return range[0] === 0 && range[1] === 0
-      ? { lower: -1000, upper: 1000 }
+      ? defaultValue
       : { lower: range[0], upper: range[1] };
   }
 
-  static _getVOIRange(element, volumeId) {
+  private static _getVOIRange(element, volumeId) {
+    const defaultValue = { lower: -1000, upper: 1000 };
     const enabledElement = getEnabledElement(element);
     const { viewport } = enabledElement;
 
@@ -85,78 +144,14 @@ class ViewportColorBar extends ColorBar {
       .getRGBTransferFunction(0)
       .getRange();
 
-    // return { lower: -500, upper: 500 };
     return voiRange[0] === 0 && voiRange[1] === 0
-      ? { lower: -1000, upper: 1000 }
+      ? defaultValue
       : { lower: voiRange[0], upper: voiRange[1] };
   }
-
-  public get element() {
-    return this._element;
-  }
-
-  public get enabledElement() {
-    return getEnabledElement(this._element);
-  }
-
-  // public get viewportId() {
-  //   return this.enabledElement.viewport.id;
-  // }
-
-  // public get renderingEngineId() {
-  //   return this.enabledElement.viewport.renderingEngineId;
-  // }
-
-  protected init() {
-    super.init();
-    console.log('>>>>> init :: this', this);
-    // this._addCornerstoneEventListener();
-  }
-
-  protected onVOIChanged(voiRange: ColorBarVOIRange) {
-    super.onVOIChanged(voiRange);
-
-    // const renderingEngine = getRenderingEngine(this._renderingEngineId);
-    // const viewport = renderingEngine.getViewport(this._viewportId);
-    const { viewport } = this.enabledElement;
-
-    if (viewport instanceof StackViewport) {
-      viewport.setProperties({
-        voiRange: voiRange,
-      });
-      viewport.render();
-    } else if (viewport instanceof VolumeViewport) {
-      const { _volumeId: volumeId } = this;
-      const viewportsContainingVolumeUID = utilities.getViewportsWithVolumeId(
-        volumeId,
-        viewport.renderingEngineId
-      );
-
-      viewport.setProperties({ voiRange });
-      viewportsContainingVolumeUID.forEach((vp) => vp.render());
-    }
-  }
-
-  // TEMPORARY
-  // private _getVolumeId(viewport: Types.IViewport) {
-  //   // If volume not specified, then return the actorUID for the
-  //   // default actor - first actor
-  //   const actorEntries = viewport.getActors();
-
-  //   if (!actorEntries) {
-  //     return;
-  //   }
-
-  //   // find the first image actor of instance type vtkVolume
-  //   return actorEntries.find(
-  //     (actorEntry) => actorEntry.actor.getClassName() === 'vtkVolume'
-  //   )?.uid;
-  // }
 
   private _imageVolumeModifiedCallback = (
     evt: Types.EventTypes.ImageVolumeModifiedEvent
   ) => {
-    console.log('>>>>> imageVolumeModifiedCallback :: evt :: ', evt);
     const { volumeId } = evt.detail.imageVolume;
 
     if (volumeId !== this._volumeId) {
@@ -164,16 +159,27 @@ class ViewportColorBar extends ColorBar {
     }
 
     const { _element: element } = this;
-    const range = ViewportColorBar._getRange(element, volumeId);
-    // console.log('>>>>> imageVolumeModifiedCallback :: range: ', range);
 
-    this.range = range;
+    this.range = ViewportColorBar._getRange(element, volumeId);
   };
 
   private _viewportVOIModifiedCallback = (
     evt: Types.EventTypes.VoiModifiedEvent
   ) => {
-    console.log('>>>>> viewportVOIModifiedCallback :: evt:', evt);
+    const { viewportId, volumeId, range } = evt.detail;
+    const { viewport } = this.enabledElement;
+
+    if (viewportId != viewport.id || volumeId !== this._volumeId) {
+      return;
+    }
+
+    // console.log('>>>>> voiModifiedCallback :: evt:', evt);
+    // eslint-disable-next-line
+    console.log(
+      `>>>>> voiModifiedCallback :: ${volumeId.slice(-12)} :: voiRange:`,
+      evt.detail.range
+    );
+    this.voiRange = range;
   };
 
   private _addCornerstoneEventListener() {
