@@ -5,20 +5,20 @@ import {
   Enums,
   volumeLoader,
   getRenderingEngine,
+  ui,
 } from '@cornerstonejs/core';
 import * as cornerstoneTools from '@cornerstonejs/tools';
 import {
   initDemo,
   createImageIdsAndCacheMetaData,
   setTitleAndDescription,
-  addButtonToToolbar,
   addDropdownToToolbar,
   setCtTransferFunctionForVolumeActor,
   setPetColorMapTransferFunctionForVolumeActor,
-  addSliderToToolbar,
 } from '../../../../utils/demo/helpers';
-import { ColorBar, ColorBarOrientation, Colormap } from './ColorBar';
-import ViewportColorBar from './ViewportColorBar';
+
+const { ViewportColorBar, Enums: ColorBarEnums } = ui.widgets.colorbar;
+const { ColorBarOrientation } = ColorBarEnums;
 
 // This is for debugging purposes
 console.warn(
@@ -408,7 +408,7 @@ addDropdownToToolbar({
     maxWidth: '200px',
   },
   onSelectedValueChange: (selectedValue) => {
-    // setPTColormap(<string>selectedValue);
+    setPTColormap(<string>selectedValue);
   },
 });
 

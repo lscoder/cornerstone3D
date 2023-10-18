@@ -1,43 +1,23 @@
 import { vec2 } from 'gl-matrix';
 import { utilities, Types } from '@cornerstonejs/core';
 import { EventListenersManager } from './EventListeners';
+import { Widget } from '../Widget';
+import {
+  ColorBarProps,
+  ColorBarRange,
+  ColorBarVOIRange,
+  Colormap,
+} from './types';
+import { ColorBarOrientation } from './enums';
+import ColorBarCanvas from './ColorBarCanvas';
 
 const DEFAULT_MULTIPLIER = 1;
 
-type WidgetPoints = {
+type ColorBarPoints = {
   page: Types.Point2;
   client: Types.Point2;
   local: Types.Point2;
 };
-
-export enum ColorBarOrientation {
-  Auto = 'auto',
-  Vertical = 'vertical',
-  Horizontal = 'horizontal',
-}
-
-export type ColorBarRange = {
-  lower: number;
-  upper: number;
-};
-
-export type ColorBarVOIRange = ColorBarRange;
-
-export type Colormap = {
-  ColorSpace: string;
-  Name: string;
-  RGBPoints: number[];
-};
-
-export interface ColorBarProps {
-  id?: string;
-  container?: HTMLElement;
-  colormaps: Colormap[];
-  activeColormapName?: string;
-  range?: ColorBarRange;
-  voiRange?: ColorBarVOIRange;
-  orientation?: ColorBarOrientation;
-}
 
 const clamp = (value, min, max) => Math.min(Math.max(min, value), max);
 
@@ -54,31 +34,29 @@ const getValidRange = (range: ColorBarRange) => ({
   upper: Math.max(range.lower + 1, range.upper),
 });
 
-class ColorBar {
-  private _id: string;
-  private _rootElement: HTMLElement;
+class ColorBar extends Widget {
   private _canvas: HTMLCanvasElement;
   private _colormaps: Map<string, Colormap>;
   private _activeColormapName: string;
   private _range: ColorBarRange;
   private _voiRange: ColorBarVOIRange;
   private _orientation: ColorBarOrientation;
-  private _containerResizeObserver: ResizeObserver;
   private _eventListenersManager: EventListenersManager;
+  private _colorBarCanvas: ColorBarCanvas;
 
-  constructor({
-    id,
-    container,
-    colormaps,
-    activeColormapName,
-    range = { lower: 0, upper: 1 },
-    voiRange = { lower: 0, upper: 1 },
-    orientation = ColorBarOrientation.Auto,
-  }: ColorBarProps) {
-    this._id = id;
-    this._rootElement = this.createRootElement();
+  constructor(props: ColorBarProps) {
+    super(props);
+
+    const {
+      colormaps,
+      activeColormapName,
+      range = { lower: 0, upper: 1 },
+      voiRange = { lower: 0, upper: 1 },
+      orientation = ColorBarOrientation.Auto,
+    } = props;
+
     this._eventListenersManager = new EventListenersManager();
-    this._canvas = this._createCanvasElement(id);
+    this._canvas = this._createCanvasElement();
     this._range = getValidRange(range);
     this._voiRange = getValidRange(voiRange);
     this._orientation = orientation;
@@ -87,41 +65,24 @@ class ColorBar {
       new Map<string, Colormap>()
     );
     this._activeColormapName = activeColormapName ?? colormaps?.[0]?.Name;
-    this._containerResizeObserver = new ResizeObserver(
-      this._containerResizeCallback
-    );
 
     this._addRootElementEventListeners();
-    this._rootElement.appendChild(this._canvas);
+    this.rootElement.appendChild(this._canvas);
 
-    if (container) {
-      this.appendTo(container);
-    }
-
-    // DEBUG
-    this.init();
+    this._colorBarCanvas = this._createColorBarCanvas(props);
+    this._colorBarCanvas.appendTo(this.rootElement);
   }
 
-  // DEBUG
-  protected init() {
-    //
-  }
+  private _createColorBarCanvas(props: ColorBarProps) {
+    const { range, voiRange, orientation } = props;
+    const colormap = this._colormaps.get(this._activeColormapName);
 
-  public get id() {
-    return this._id;
-  }
-
-  public set id(id) {
-    if (id === this._id) {
-      return;
-    }
-
-    this._id = id;
-    this._canvas.id = id;
-  }
-
-  public get rootElement() {
-    return this._rootElement;
+    return new ColorBarCanvas({
+      colormap,
+      range,
+      voiRange,
+      orientation,
+    });
   }
 
   /**
@@ -139,6 +100,14 @@ class ColorBar {
       return;
     }
 
+    const colormap = this._colormaps.get(colormapName);
+
+    if (!colormap) {
+      console.warn(`Invalid colormap name (${colormapName})`);
+      return;
+    }
+
+    this._colorBarCanvas.colormap = colormap;
     this._activeColormapName = colormapName;
     this.render();
   }
@@ -154,6 +123,8 @@ class ColorBar {
 
     this._orientation = orientation;
     this.render();
+
+    this._colorBarCanvas.orientation = orientation;
   }
 
   public get range() {
@@ -169,6 +140,8 @@ class ColorBar {
 
     this._range = getValidRange(range);
     this.render();
+
+    this._colorBarCanvas.range = range;
   }
 
   public get voiRange() {
@@ -185,36 +158,15 @@ class ColorBar {
     this._voiRange = getValidRange(voiRange);
     this.voiChanged(this._voiRange);
     this.render();
-  }
 
-  /**
-   * Append the color bar node to a parent element and re-renders the color bar
-   * @param container - HTML element where the color bar will be added to
-   */
-  public appendTo(container: HTMLElement) {
-    const {
-      _rootElement: rootElement,
-      _containerResizeObserver: resizeObserver,
-    } = this;
-    const { parentElement: currentContainer } = rootElement;
-
-    if (!container || container === currentContainer) {
-      return;
-    }
-
-    if (currentContainer) {
-      resizeObserver.unobserve(currentContainer);
-    }
-
-    container.appendChild(rootElement);
-    resizeObserver.observe(container);
+    this._colorBarCanvas.voiRange = voiRange;
   }
 
   /**
    * Render the color bar using the active LUT
    */
   public render(): void {
-    if (!this._rootElement.isConnected || !this._activeColormapName) {
+    if (!this.rootElement.isConnected || !this._activeColormapName) {
       return;
     }
 
@@ -336,18 +288,8 @@ class ColorBar {
     // console.log('>>>>> debugValues ::', debugValues);
   }
 
-  /**
-   * Removes the canvas from the DOM and stop listening to DOM events
-   */
   public dispose() {
-    const {
-      _rootElement: rootElement,
-      _containerResizeObserver: resizeObserver,
-    } = this;
-    const { parentElement } = rootElement;
-
-    parentElement?.removeChild(rootElement);
-    resizeObserver.disconnect();
+    super.dispose();
     this._removeRootElementEventListeners();
   }
 
@@ -362,15 +304,16 @@ class ColorBar {
     return rootElement;
   }
 
-  protected containerResized(width: number, height: number) {
-    const { _canvas: canvas } = this;
+  protected containerResized() {
+    super.containerResized();
 
-    if (canvas.width === width && canvas.height === height) {
-      return;
-    }
+    const { _canvas: canvas } = this;
+    const { width, height } = this.containerSize;
 
     canvas.width = width;
     canvas.height = height;
+
+    this._colorBarCanvas.size = { width, height };
     this.render();
   }
 
@@ -382,8 +325,20 @@ class ColorBar {
     // TODO: override voiRange property?
   }
 
-  private _getPointsFromMouseEvent(evt: MouseEvent): WidgetPoints {
-    const { _rootElement: element } = this;
+  private _createCanvasElement() {
+    const canvas = document.createElement('canvas');
+
+    Object.assign(canvas.style, {
+      width: '100%',
+      height: '100%',
+      pointerEvents: 'none',
+    });
+
+    return canvas;
+  }
+
+  private _getPointsFromMouseEvent(evt: MouseEvent): ColorBarPoints {
+    const { rootElement: element } = this;
     const clientPoint: Types.Point2 = [evt.clientX, evt.clientY];
     const pagePoint: Types.Point2 = [evt.pageX, evt.pageY];
     const rect = element.getBoundingClientRect();
@@ -396,12 +351,12 @@ class ColorBar {
   }
 
   private _mouseOverCallback = (evt) => {
-    // const { _rootElement: element } = this;
+    // const { rootElement: element } = this;
     // evt.stopPropagation();
   };
 
   private _mouseOutCallback = (evt) => {
-    // const { _rootElement: element } = this;
+    // const { rootElement: element } = this;
     // evt.stopPropagation();
   };
 
@@ -453,7 +408,7 @@ class ColorBar {
   };
 
   private _addRootElementEventListeners() {
-    const { _rootElement: element } = this;
+    const { rootElement: element } = this;
 
     this._removeRootElementEventListeners();
     element.addEventListener('mouseover', this._mouseOverCallback);
@@ -462,7 +417,7 @@ class ColorBar {
   }
 
   private _removeRootElementEventListeners() {
-    const { _rootElement: element } = this;
+    const { rootElement: element } = this;
 
     element.removeEventListener('mouseover', this._mouseOverCallback);
     element.removeEventListener('mouseout', this._mouseOutCallback);
@@ -489,41 +444,6 @@ class ColorBar {
     document.removeEventListener('mouseup', this._mouseUpCallback);
     manager.removeEventListener(document, 'colorbar.voi.mousemove');
   }
-
-  private _createCanvasElement(id: string) {
-    const canvas = document.createElement('canvas');
-    canvas.id = id;
-
-    Object.assign(canvas.style, {
-      width: '100%',
-      height: '100%',
-      pointerEvents: 'none',
-    });
-
-    return canvas;
-  }
-
-  private _containerResizeCallback = (entries: ResizeObserverEntry[]): void => {
-    let width;
-    let height;
-
-    const { contentRect, contentBoxSize } = entries[0];
-
-    // `contentRect` is better supported than `borderBoxSize` or `contentBoxSize`,
-    // but it is left over from an earlier implementation of the Resize Observer API
-    // and may be deprecated in future versions.
-    // https://developer.mozilla.org/en-US/docs/Web/API/ResizeObserverEntry/contentRect
-    if (contentRect) {
-      width = contentRect.width;
-      height = contentRect.height;
-    } else if (contentBoxSize?.length) {
-      width = contentBoxSize[0].inlineSize;
-      height = contentBoxSize[0].blockSize;
-    }
-
-    // this.resize(width, height);
-    this.containerResized(width, height);
-  };
 }
 
 export { ColorBar as default, ColorBar };

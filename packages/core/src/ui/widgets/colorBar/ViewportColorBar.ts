@@ -8,7 +8,8 @@ import {
   getEnabledElement,
   cache,
 } from '@cornerstonejs/core';
-import { ColorBar, ColorBarProps, ColorBarVOIRange } from './ColorBar';
+import { ColorBar } from './ColorBar';
+import { ColorBarProps, ColorBarVOIRange } from './types';
 
 const { Events } = Enums;
 const DEFAULT_MULTIPLIER = 4;
@@ -32,7 +33,6 @@ class ViewportColorBar extends ColorBar {
     this._element = props.element;
     this._volumeId = props.volumeId;
 
-    this.init();
     this._addCornerstoneEventListener();
   }
 
@@ -42,11 +42,6 @@ class ViewportColorBar extends ColorBar {
 
   public get enabledElement() {
     return getEnabledElement(this._element);
-  }
-
-  protected init() {
-    super.init();
-    console.log('>>>>> init :: this', this);
   }
 
   protected getVOIMultipliers(): [number, number] {
@@ -197,4 +192,4 @@ class ViewportColorBar extends ColorBar {
   }
 }
 
-export { ViewportColorBar as default, ViewportColorBar };
+export { ViewportColorBar as default, ViewportColorBar as ViewportColorBar };

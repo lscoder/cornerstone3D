@@ -1,4 +1,4 @@
-import ColormapCanvas from './ColormapCanvas';
+import ColormapCanvas from './ColorBarCanvas';
 
 class ColormapListItem {
   private _canvas: ColormapCanvas;

@@ -1,5 +1,3 @@
-import { EventListenersManager } from './EventListeners';
-
 export type WidgetProps = {
   id: string;
   container?: HTMLElement;
@@ -34,6 +32,10 @@ class Widget {
    */
   public get id() {
     return this._id;
+  }
+
+  public get rootElement(): HTMLElement {
+    return this._rootElement;
   }
 
   protected createRootElement(): HTMLElement {
@@ -78,11 +80,9 @@ class Widget {
   /**
    * Method called every time widget's container is resize giving the
    * opportunity to children classes to act when that happens.
-   * @param width - New width of the container
-   * @param height - New height of the container
    */
-  protected containerResized(width: number, height: number) {
-    this._containerSize = { width, height };
+  protected containerResized() {
+    // no-op
   }
 
   private _containerResizeCallback = (entries: ResizeObserverEntry[]): void => {
@@ -103,7 +103,8 @@ class Widget {
       height = contentBoxSize[0].blockSize;
     }
 
-    this.containerResized(width, height);
+    this._containerSize = { width, height };
+    this.containerResized();
   };
 
   /**
