@@ -56,18 +56,8 @@ class ViewportColorBar extends ColorBar {
       const ptMultiplier =
         5 / Math.max(this.containerSize.width, this.containerSize.height);
 
-      return isPreScaled
-        ? [ptMultiplier, ptMultiplier]
-        : [DEFAULT_MULTIPLIER, DEFAULT_MULTIPLIER];
+      return isPreScaled ? [0, ptMultiplier] : [0, DEFAULT_MULTIPLIER];
     }
-
-    // eslint-disable-next-line
-    console.log(
-      `>>>>> volumeId (${modality}, ${isPreScaled}) :: ${this._volumeId.slice(
-        -20
-      )} :`,
-      volume
-    );
 
     return [DEFAULT_MULTIPLIER, DEFAULT_MULTIPLIER];
   }
@@ -109,8 +99,6 @@ class ViewportColorBar extends ColorBar {
 
     const imageData = actor.actor.getMapper().getInputData();
     const range = imageData.getPointData().getScalars().getRange();
-
-    // console.log(`>>>>> range :: ${volumeId.slice(-20)} :: `, range);
 
     return range[0] === 0 && range[1] === 0
       ? defaultValue

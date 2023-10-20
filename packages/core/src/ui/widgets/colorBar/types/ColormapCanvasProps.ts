@@ -1,4 +1,3 @@
-import { ColorBarOrientation } from '../enums/ColorBarOrientation';
 import { ColorBarRange } from './ColorBarRange';
 import { ColorBarSize } from './ColorBarSize';
 import { ColorBarVOIRange } from './ColorBarVOIRange';
@@ -9,6 +8,7 @@ export interface ColorBarCanvasProps {
   size?: ColorBarSize;
   range?: ColorBarRange;
   voiRange?: ColorBarVOIRange;
-  orientation?: ColorBarOrientation;
+
   container?: HTMLElement;
+  showFullPixelValueRange?: boolean;
 }

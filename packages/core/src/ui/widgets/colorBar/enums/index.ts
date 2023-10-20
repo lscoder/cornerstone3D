@@ -1,1 +1,1 @@
-export { ColorBarOrientation } from './ColorBarOrientation';
+export { ColorBarScalePosition } from './ColorBarScalePosition';

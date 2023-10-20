@@ -1,8 +1,11 @@
 import { utilities } from '@cornerstonejs/core';
-import { ColorBarOrientation } from './enums';
 import { ColorBarRange, ColorBarVOIRange, Colormap } from './types';
 import { ColorBarCanvasProps } from './types/ColormapCanvasProps';
 import { ColorBarSize } from './types/ColorBarSize';
+import isRangeValid from './common/isRangeValid';
+import rangesEqual from './common/rangesEqual';
+import isSizeValid from './common/isSizeValid';
+import sizesEqual from './common/sizesEqual';
 
 const clamp = (value, min, max) => Math.min(Math.max(min, value), max);
 
@@ -14,33 +17,29 @@ const interpolateVec3 = (a, b, t) => {
   ];
 };
 
-const getValidRange = (range: ColorBarRange) => ({
-  ...range,
-  upper: Math.max(range.lower + 1, range.upper),
-});
-
 class ColorBarCanvas {
   private _canvas: HTMLCanvasElement;
   private _range: ColorBarRange;
   private _voiRange: ColorBarVOIRange;
-  private _orientation: ColorBarOrientation;
   private _colormap: Colormap;
+  private _showFullPixelValueRange: boolean;
 
   constructor(props: ColorBarCanvasProps) {
+    ColorBarCanvas.validateProps(props);
+
     const {
       colormap,
-      size = { width: 100, height: 20 },
+      size = { width: 20, height: 100 },
       range = { lower: 0, upper: 1 },
       voiRange = { lower: 0, upper: 1 },
-      orientation = ColorBarOrientation.Auto,
       container,
+      showFullPixelValueRange = false,
     } = props;
 
     this._colormap = colormap;
     this._range = range;
     this._voiRange = voiRange;
-    this._orientation = orientation;
-
+    this._showFullPixelValueRange = showFullPixelValueRange;
     this._canvas = this._createRootElement(size);
 
     if (container) {
@@ -48,7 +47,7 @@ class ColorBarCanvas {
     }
   }
 
-  public get colormap() {
+  public get colormap(): Colormap {
     return this._colormap;
   }
 
@@ -65,61 +64,50 @@ class ColorBarCanvas {
   public set size(size: ColorBarSize) {
     const { _canvas: canvas } = this;
 
-    if (size.width === canvas.width && size.height === canvas.height) {
+    if (!isSizeValid(size) || sizesEqual(canvas, size)) {
       return;
     }
 
-    canvas.width = size.width;
-    canvas.height = size.height;
-
-    Object.assign(canvas.style, {
-      width: `${size.width}px`,
-      height: `${size.height}px`,
-    });
-
+    this._setCanvasSize(canvas, size);
     this.render();
   }
 
-  public get orientation() {
-    return this._orientation;
-  }
-
-  public set orientation(orientation: ColorBarOrientation) {
-    if (orientation === this._orientation) {
-      return;
-    }
-
-    this._orientation = orientation;
-    this.render();
-  }
-
-  public get range() {
+  public get range(): ColorBarRange {
     return { ...this._range };
   }
 
-  public set range(range: ColorBarVOIRange) {
-    const { lower: currentLower, upper: currentUpper } = this._range;
-
-    if (currentLower === range.lower && currentUpper === range.upper) {
+  public set range(range: ColorBarRange) {
+    if (!isRangeValid(range) || rangesEqual(range, this._range)) {
       return;
     }
 
-    this._range = getValidRange(range);
+    this._range = range;
     this.render();
   }
 
-  public get voiRange() {
+  public get voiRange(): ColorBarVOIRange {
     return { ...this._voiRange };
   }
 
   public set voiRange(voiRange: ColorBarVOIRange) {
-    const { lower: currentLower, upper: currentUpper } = this._voiRange;
-
-    if (voiRange.lower === currentLower && voiRange.upper === currentUpper) {
+    if (!isRangeValid(voiRange) || rangesEqual(voiRange, this._voiRange)) {
       return;
     }
 
-    this._voiRange = getValidRange(voiRange);
+    this._voiRange = voiRange;
+    this.render();
+  }
+
+  public get showFullPixelValueRange(): boolean {
+    return this._showFullPixelValueRange;
+  }
+
+  public set showFullPixelValueRange(showFullRange: boolean) {
+    if (showFullRange === this._showFullPixelValueRange) {
+      return;
+    }
+
+    this._showFullPixelValueRange = showFullRange;
     this.render();
   }
 
@@ -128,10 +116,59 @@ class ColorBarCanvas {
     this.render();
   }
 
-  /**
-   * Render the color bar using the active LUT
-   */
-  public render(): void {
+  public dispose() {
+    const { _canvas: canvas } = this;
+    const { parentElement } = canvas;
+
+    parentElement?.removeChild(canvas);
+  }
+
+  private static validateProps(props: ColorBarCanvasProps) {
+    const { size, range, voiRange } = props;
+
+    if (size && !isSizeValid(size)) {
+      throw new Error('Invalid "size"');
+    }
+
+    if (range && !isRangeValid(range)) {
+      throw new Error('Invalid "range"');
+    }
+
+    if (voiRange && !isRangeValid(voiRange)) {
+      throw new Error('Invalid "voiRange"');
+    }
+  }
+
+  private _setCanvasSize(canvas: HTMLCanvasElement, size: ColorBarSize) {
+    const { width, height } = size;
+
+    canvas.width = width;
+    canvas.height = height;
+
+    Object.assign(canvas.style, {
+      width: `${width}px`,
+      height: `${height}px`,
+    });
+  }
+
+  private _createRootElement(size: ColorBarSize) {
+    const canvas = document.createElement('canvas');
+
+    Object.assign(canvas.style, {
+      pointerEvents: 'none',
+      boxSizing: 'border-box',
+    });
+
+    this._setCanvasSize(canvas, size);
+
+    return canvas;
+  }
+
+  private render(): void {
+    if (!this._canvas.isConnected) {
+      return;
+    }
+
     const { _colormap: colormap } = this;
     const { RGBPoints: rgbPoints } = colormap;
     const colorsCount = rgbPoints.length / 4;
@@ -154,25 +191,21 @@ class ColorBarCanvas {
       };
     };
 
-    const { _range: range, _voiRange: voiRange } = this;
-    // const { _voiRange: voiRange } = this;
-    // const range = { ...voiRange };
+    const { width, height } = this._canvas;
+    const canvasContext = this._canvas.getContext('2d');
+    const isHorizontal = width > height;
+    const maxValue = isHorizontal ? width : height;
+    const { _voiRange: voiRange } = this;
+    const range = this._showFullPixelValueRange ? this._range : { ...voiRange };
+
     const { windowWidth } = utilities.windowLevel.toWindowLevel(
       voiRange.lower,
       voiRange.upper
     );
-    const { width, height } = this._canvas;
-    const canvasContext = this._canvas.getContext('2d');
-    const isHorizontal =
-      this._orientation === ColorBarOrientation.Horizontal ||
-      (this._orientation === ColorBarOrientation.Auto && width >= height);
-    const maxValue = isHorizontal ? width : height;
 
     let previousColorPoint = undefined;
     let currentColorPoint = getColorPoint(0);
 
-    // const tRangeInc = 1 / (maxValue - 1);
-    // let tRange = 0;
     const incRawPixelValue = (range.upper - range.lower) / (maxValue - 1);
     let rawPixelValue = range.lower;
 
@@ -233,38 +266,8 @@ class ColorBarCanvas {
         canvasContext.fillRect(0, height - i - 1, width, 1);
       }
 
-      // tRange += tRangeInc;
       rawPixelValue += incRawPixelValue;
     }
-  }
-
-  private _createRootElement(size: ColorBarSize) {
-    const canvas = document.createElement('canvas');
-
-    canvas.width = size.width;
-    canvas.height = size.height;
-
-    Object.assign(canvas.style, {
-      width: `${size.width}px`,
-      height: `${size.height}px`,
-      pointerEvents: 'none',
-      boxSizing: 'border-box',
-
-      // DEBUG
-      position: 'absolute',
-      top: '0px',
-      left: '25px',
-      // border: 'solid 1px #f00',
-    });
-
-    return canvas;
-  }
-
-  public dispose() {
-    const { _canvas: canvas } = this;
-    const { parentElement } = canvas;
-
-    parentElement?.removeChild(canvas);
   }
 }
 

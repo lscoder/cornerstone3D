@@ -17,8 +17,8 @@ import {
   setPetColorMapTransferFunctionForVolumeActor,
 } from '../../../../utils/demo/helpers';
 
-const { ViewportColorBar, Enums: ColorBarEnums } = ui.widgets.colorbar;
-const { ColorBarOrientation } = ColorBarEnums;
+const { ViewportColorBar } = ui.widgets.colorbar;
+const { ColorBarScalePosition } = ui.widgets.colorbar.Enums;
 
 // This is for debugging purposes
 console.warn(
@@ -105,10 +105,8 @@ const addInstruction = (instruction) => {
 };
 
 addInstruction('- Select different colormaps');
-addInstruction('- Use the sliders to change the VOI min/max values');
-addInstruction(
-  `- The colobar can be moved to ${containers.length} different places`
-);
+addInstruction('- Click and drag on viewport to change VOI');
+addInstruction('- Click and drag at the color bar to change VOI');
 
 const colorBarSize = { shortSide: 20, longSide: 250 };
 
@@ -119,7 +117,6 @@ const colorBarSize = { shortSide: 20, longSide: 250 };
 //   colormaps,
 //   activeColormapName: 'Grayscale',
 //   // voiRange: { min: 0.25, max: 0.75 },
-//   // orientation: ColorBarOrientation.Vertical,
 // });
 
 // const ptColorBar = new ViewportColorBar({
@@ -129,7 +126,6 @@ const colorBarSize = { shortSide: 20, longSide: 250 };
 //   colormaps,
 //   activeColormapName: currentPTColormapName,
 //   // voiRange: { min: 0.25, max: 0.75 },
-//   // orientation: ColorBarOrientation.Vertical,
 // });
 
 // const colorBars = [ctColorBar, ptColorBar */];
@@ -271,10 +267,10 @@ containers.forEach((container) => {
 
 const runTestsButton = document.createElement('button');
 
-runTestsButton.style.marginTop = '20px';
-runTestsButton.textContent = 'Run dev tests';
-runTestsButton.addEventListener('click', () => runTests());
-content.appendChild(runTestsButton);
+// runTestsButton.style.marginTop = '20px';
+// runTestsButton.textContent = 'Run dev tests';
+// runTestsButton.addEventListener('click', () => runTests());
+// content.appendChild(runTestsButton);
 
 // ==[ Toolbar ]================================================================
 
@@ -436,20 +432,6 @@ addDropdownToToolbar({
 
 // ==[ Dev Tests ]==============================================================
 
-// async function testOrientations() {
-//   const setOrientation = async (orientation) => {
-//     console.log(`Orientation: ${orientation}`);
-//     ptColorBar.orientation = orientation;
-//     await pause(500);
-//   };
-
-//   await pause(500);
-//   await setOrientation(ColorBarOrientation.Vertical);
-//   await setOrientation(ColorBarOrientation.Horizontal);
-//   await setOrientation(ColorBarOrientation.Vertical);
-//   await setOrientation(ColorBarOrientation.Auto);
-// }
-
 // async function testVoiRange() {
 //   console.log('Testing VOI range');
 
@@ -553,7 +535,6 @@ async function runTests() {
   // ctColorBar.appendTo(currentCTParent);
   // ptColorBar.appendTo(currentPTParent);
   // await testPTColormaps();
-  // await testOrientations();
   // await testVoiRange();
   // console.log('Dev tests complete');
 }
@@ -712,6 +693,15 @@ async function run() {
   element.appendChild(bottomLeftContainer);
   element.appendChild(bottomRightContainer);
 
+  const scaleStyle = {
+    font: '12px Arial',
+    color: '#fff',
+    maxNumTicks: 8,
+    tickSize: 5,
+    tickWidth: 1,
+    labelMargin: 3,
+  };
+
   ctColorBar = new ViewportColorBar({
     id: 'ctColorBar',
     element,
@@ -719,6 +709,8 @@ async function run() {
     volumeId: ctVolumeId,
     colormaps,
     activeColormapName: 'Grayscale',
+    scalePosition: ColorBarScalePosition.TopOrLeft,
+    scaleStyle,
   });
 
   ptColorBar = new ViewportColorBar({
@@ -728,12 +720,9 @@ async function run() {
     volumeId: ptVolumeId,
     colormaps,
     activeColormapName: currentPTColormapName,
-    // voiRange: { min: 0.25, max: 0.75 },
-    // orientation: ColorBarOrientation.Vertical,
+    scalePosition: ColorBarScalePosition.TopOrLeft,
+    scaleStyle,
   });
-
-  // ctColorBar.appendTo(rightTopContainer);
-  // ptColorBar.appendTo(rightBottomContainer);
 }
 
 run();

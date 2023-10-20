@@ -1,6 +1,7 @@
 import { WidgetProps } from '../../Widget';
-import { ColorBarOrientation } from '../enums/ColorBarOrientation';
+import { ColorBarScalePosition } from '../enums/ColorBarScalePosition';
 import { ColorBarRange } from './ColorBarRange';
+import { ColorBarScaleStyle } from './ColorBarScaleStyle';
 import { ColorBarVOIRange } from './ColorBarVOIRange';
 import { Colormap } from './Colormap';
 
@@ -9,5 +10,7 @@ export interface ColorBarProps extends WidgetProps {
   activeColormapName?: string;
   range?: ColorBarRange;
   voiRange?: ColorBarVOIRange;
-  orientation?: ColorBarOrientation;
+  scalePosition?: ColorBarScalePosition;
+  scaleStyle?: ColorBarScaleStyle;
+  showFullPixelValueRange?: boolean;
 }

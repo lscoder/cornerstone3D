@@ -3,10 +3,15 @@ import { utilities, Types } from '@cornerstonejs/core';
 import { EventListenersManager } from './EventListeners';
 import { Widget } from '../Widget';
 import { ColorBarProps, ColorBarVOIRange, Colormap } from './types';
-import { ColorBarOrientation } from './enums';
 import ColorBarCanvas from './ColorBarCanvas';
+import ColorBarScale from './ColorBarScale';
+import isRangeValid from './common/isRangeValid';
+import rangesEqual from './common/rangesEqual';
+import { ColorBarScalePosition } from './enums/ColorBarScalePosition';
 
 const DEFAULT_MULTIPLIER = 1;
+const DEFAULT_SCALE_BAR_POSITION = ColorBarScalePosition.BottomOrRight;
+const SCALE_BAR_SIZE = 50;
 
 type ColorBarPoints = {
   page: Types.Point2;
@@ -15,28 +20,46 @@ type ColorBarPoints = {
 };
 
 class ColorBar extends Widget {
-  private _canvas: HTMLCanvasElement;
   private _colormaps: Map<string, Colormap>;
   private _activeColormapName: string;
   private _eventListenersManager: EventListenersManager;
-  private _colorBarCanvas: ColorBarCanvas;
+  private _canvas: ColorBarCanvas;
+  private _scaleBar: ColorBarScale;
+  private _scalePosition: ColorBarScalePosition;
+  private _isInteracting = false;
 
   constructor(props: ColorBarProps) {
     super(props);
 
-    const { colormaps, activeColormapName } = props;
-
     this._eventListenersManager = new EventListenersManager();
-    this._colormaps = colormaps.reduce(
+    this._colormaps = ColorBar.getColormapsMap(props);
+    this._activeColormapName = ColorBar.getInitialColormapName(props);
+    this._canvas = this._createCanvas(props);
+    this._scaleBar = this._createScaleBar(props);
+    this._scalePosition = props.scalePosition ?? DEFAULT_SCALE_BAR_POSITION;
+
+    this._canvas.appendTo(this.rootElement);
+    this._scaleBar.appendTo(document.body);
+
+    this._addRootElementEventListeners();
+  }
+
+  private static getColormapsMap(props: ColorBarProps) {
+    const { colormaps } = props;
+
+    return colormaps.reduce(
       (items, item) => items.set(item.Name, item),
       new Map<string, Colormap>()
     );
-    this._activeColormapName = activeColormapName ?? colormaps?.[0]?.Name;
+  }
 
-    this._colorBarCanvas = this._createColorBarCanvas(props);
-    this._colorBarCanvas.appendTo(this.rootElement);
+  private static getInitialColormapName(props: ColorBarProps) {
+    const { activeColormapName, colormaps } = props;
+    const colormapExists =
+      !!activeColormapName &&
+      colormaps.some((cm) => cm.Name === activeColormapName);
 
-    this._addRootElementEventListeners();
+    return colormapExists ? activeColormapName : colormaps[0].Name;
   }
 
   /**
@@ -62,39 +85,41 @@ class ColorBar extends Widget {
     }
 
     this._activeColormapName = colormapName;
-    this._colorBarCanvas.colormap = colormap;
-  }
-
-  public get orientation() {
-    return this._colorBarCanvas.orientation;
-  }
-
-  public set orientation(orientation: ColorBarOrientation) {
-    this._colorBarCanvas.orientation = orientation;
+    this._canvas.colormap = colormap;
   }
 
   public get range() {
-    return this._colorBarCanvas.range;
+    return this._canvas.range;
   }
 
   public set range(range: ColorBarVOIRange) {
-    this._colorBarCanvas.range = range;
+    this._canvas.range = range;
+    this._scaleBar.range = range;
   }
 
   public get voiRange() {
-    return this._colorBarCanvas.voiRange;
+    return this._canvas.voiRange;
   }
 
   public set voiRange(voiRange: ColorBarVOIRange) {
-    const { voiRange: currentVoiRange } = this._colorBarCanvas;
-    const { lower: currentLower, upper: currentUpper } = currentVoiRange;
+    const { voiRange: currentVoiRange } = this._canvas;
 
-    if (voiRange.lower === currentLower && voiRange.upper == currentUpper) {
+    if (!isRangeValid(voiRange) || rangesEqual(voiRange, currentVoiRange)) {
       return;
     }
 
-    this._colorBarCanvas.voiRange = voiRange;
-    this.voiChanged(this._colorBarCanvas.voiRange);
+    this._canvas.voiRange = voiRange;
+    this._scaleBar.voiRange = voiRange;
+    this.voiChanged(voiRange);
+  }
+
+  public get showFullPixelValueRange() {
+    return this._canvas.showFullPixelValueRange;
+  }
+
+  public set showFullPixelValueRange(value: boolean) {
+    this._canvas.showFullPixelValueRange = value;
+    this._scaleBar.showFullPixelValueRange = value;
   }
 
   public dispose() {
@@ -115,7 +140,7 @@ class ColorBar extends Widget {
 
   protected containerResized() {
     super.containerResized();
-    this._colorBarCanvas.size = this.containerSize;
+    this._canvas.size = this.containerSize;
   }
 
   protected getVOIMultipliers(): [number, number] {
@@ -126,15 +151,25 @@ class ColorBar extends Widget {
     // TODO: override voiRange property?
   }
 
-  private _createColorBarCanvas(props: ColorBarProps) {
-    const { range, voiRange, orientation } = props;
+  private _createCanvas(props: ColorBarProps) {
+    const { range, voiRange, showFullPixelValueRange } = props;
     const colormap = this._colormaps.get(this._activeColormapName);
 
     return new ColorBarCanvas({
       colormap,
-      range,
-      voiRange,
-      orientation,
+      range: range,
+      voiRange: voiRange,
+      showFullPixelValueRange,
+    });
+  }
+
+  public _createScaleBar(props: ColorBarProps): ColorBarScale {
+    return new ColorBarScale({
+      range: props.range,
+      voiRange: props.voiRange,
+      scaleStyle: props.scaleStyle,
+      scalePosition: props.scalePosition,
+      showFullPixelValueRange: props.showFullPixelValueRange,
     });
   }
 
@@ -151,17 +186,55 @@ class ColorBar extends Widget {
     return { client: clientPoint, page: pagePoint, local: localPoints };
   }
 
+  private showScaleBar() {
+    const { _scaleBar: scaleBar } = this;
+    const { width: containerWidth, height: containerHeight } =
+      this.containerSize;
+    const { top: containerTop, left: containerLeft } =
+      this.rootElement.getBoundingClientRect();
+    const isHorizontal = containerWidth >= containerHeight;
+    const width = isHorizontal ? containerWidth : SCALE_BAR_SIZE;
+    const height = isHorizontal ? SCALE_BAR_SIZE : containerHeight;
+
+    let scaleBarTop;
+    let scaleBarLeft;
+
+    scaleBar.size = { width, height };
+
+    if (isHorizontal) {
+      scaleBarTop =
+        this._scalePosition === ColorBarScalePosition.TopOrLeft
+          ? containerTop - height
+          : containerTop + containerHeight;
+
+      scaleBarLeft = containerLeft;
+    } else {
+      scaleBarTop = containerTop;
+
+      scaleBarLeft =
+        this._scalePosition === ColorBarScalePosition.TopOrLeft
+          ? containerLeft - width
+          : containerLeft + containerWidth;
+    }
+
+    scaleBar.position = { top: scaleBarTop, left: scaleBarLeft };
+    scaleBar.visible = true;
+  }
+
   private _mouseOverCallback = (evt) => {
-    // const { rootElement: element } = this;
-    // evt.stopPropagation();
+    this.showScaleBar();
+    evt.stopPropagation();
   };
 
   private _mouseOutCallback = (evt) => {
-    // const { rootElement: element } = this;
-    // evt.stopPropagation();
+    if (!this._isInteracting) {
+      this._scaleBar.visible = false;
+    }
+    evt.stopPropagation();
   };
 
   private _mouseDownCallback = (evt: MouseEvent) => {
+    this._isInteracting = true;
     this._addVOIEventListeners(evt);
     evt.stopPropagation();
   };
@@ -202,6 +275,7 @@ class ColorBar extends Widget {
   };
 
   private _mouseUpCallback = (evt) => {
+    this._isInteracting = false;
     this._removeVOIEventListeners();
     evt.stopPropagation();
   };
@@ -226,7 +300,7 @@ class ColorBar extends Widget {
   private _addVOIEventListeners(evt: MouseEvent) {
     const { _eventListenersManager: manager } = this;
     const points = this._getPointsFromMouseEvent(evt);
-    const voiRange = { ...this._colorBarCanvas.voiRange };
+    const voiRange = { ...this._canvas.voiRange };
     const initialDragState = { points, voiRange };
 
     this._removeVOIEventListeners();
