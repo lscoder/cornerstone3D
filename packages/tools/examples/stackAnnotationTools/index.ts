@@ -24,6 +24,7 @@ const {
   RectangleROITool,
   EllipticalROITool,
   CircleROITool,
+  SplineROITool,
   BidirectionalTool,
   AngleTool,
   CobbAngleTool,
@@ -113,6 +114,7 @@ const toolsNames = [
   RectangleROITool.toolName,
   EllipticalROITool.toolName,
   CircleROITool.toolName,
+  SplineROITool.toolName,
   BidirectionalTool.toolName,
   AngleTool.toolName,
   CobbAngleTool.toolName,
@@ -211,6 +213,7 @@ async function run() {
   cornerstoneTools.addTool(RectangleROITool);
   cornerstoneTools.addTool(EllipticalROITool);
   cornerstoneTools.addTool(CircleROITool);
+  cornerstoneTools.addTool(SplineROITool);
   cornerstoneTools.addTool(BidirectionalTool);
   cornerstoneTools.addTool(AngleTool);
   cornerstoneTools.addTool(CobbAngleTool);
@@ -227,6 +230,7 @@ async function run() {
   toolGroup.addTool(RectangleROITool.toolName);
   toolGroup.addTool(EllipticalROITool.toolName);
   toolGroup.addTool(CircleROITool.toolName);
+  toolGroup.addTool(SplineROITool.toolName);
   toolGroup.addTool(BidirectionalTool.toolName);
   toolGroup.addTool(AngleTool.toolName);
   toolGroup.addTool(CobbAngleTool.toolName);
@@ -248,6 +252,7 @@ async function run() {
   toolGroup.setToolPassive(RectangleROITool.toolName);
   toolGroup.setToolPassive(EllipticalROITool.toolName);
   toolGroup.setToolPassive(CircleROITool.toolName);
+  toolGroup.setToolPassive(SplineROITool.toolName);
   toolGroup.setToolPassive(BidirectionalTool.toolName);
   toolGroup.setToolPassive(AngleTool.toolName);
   toolGroup.setToolPassive(ArrowAnnotateTool.toolName);
