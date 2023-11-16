@@ -15,6 +15,8 @@ export interface ISpline {
   get invalidated(): boolean;
   addControlPoint(x: number, y: number): void;
   addControlPoints(points: Point2[]): void;
+  clearControlPoints(): void;
+  setControlPoints(points: Point2[]): void;
   updateControlPoint(index: number, x: number, y: number): void;
   getControlPoints(): Point2[];
   getClosestControlPoint(x: number, y: number): ClosestControlPoint;
@@ -24,5 +26,6 @@ export interface ISpline {
     range: number
   ): ClosestControlPoint;
   getPolylinePoints(): Point2[];
+  isPointNearCurve(point: Point2, maxDist: number): boolean;
   containsPoint(x: number, y: number): boolean;
 }

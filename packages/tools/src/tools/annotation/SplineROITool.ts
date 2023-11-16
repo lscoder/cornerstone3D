@@ -27,6 +27,7 @@ import { isAnnotationVisible } from '../../stateManagement/annotation/annotation
 import {
   drawCircle as drawCircleSvg,
   drawHandles as drawHandlesSvg,
+  drawPolyline as drawPolylineSvg,
   drawLinkedTextBox as drawLinkedTextBoxSvg,
 } from '../../drawingSvg';
 import { state } from '../../store';
@@ -51,6 +52,7 @@ import { SplineROIAnnotation } from '../../types/ToolSpecificAnnotationTypes';
 import {
   AnnotationCompletedEventDetail,
   AnnotationModifiedEventDetail,
+  AnnotationRemovedEventDetail,
 } from '../../types/EventTypes';
 import triggerAnnotationRenderForViewportIds from '../../utilities/triggerAnnotationRenderForViewportIds';
 import { pointInShapeCallback } from '../../utilities';
@@ -66,7 +68,13 @@ import {
 } from '../../utilities/math/circle';
 import { pointInEllipse } from '../../utilities/math/ellipse';
 import { BasicStatsCalculator } from '../../utilities/math/basic';
+import { ISpline } from './splines/types/ISpline';
+import { CardinalSpline } from './splines/CardinalSpline';
+import { LinearSpline } from './splines/LinearSpline';
+import { CatmullRomSpline } from './splines/CatmullRomSpline';
+import { BSpline } from './splines/BSpline';
 
+const SPLINE_CLICK_CLOSE_CURVE_DIST = 10;
 const { transformWorldToIndex } = csUtils;
 
 class SplineROITool extends AnnotationTool {
@@ -76,7 +84,7 @@ class SplineROITool extends AnnotationTool {
   mouseDragCallback: any;
   _throttledCalculateCachedStats: any;
   editData: {
-    annotation: any;
+    annotation: SplineROIAnnotation;
     viewportIdsToRender: Array<string>;
     handleIndex?: number;
     movingTextBox?: boolean;
@@ -85,6 +93,7 @@ class SplineROITool extends AnnotationTool {
   } | null;
   isDrawing: boolean;
   isHandleOutsideImage = false;
+  splines: Map<string, ISpline> = new Map();
 
   constructor(
     toolProps: PublicToolProps = {},
@@ -124,10 +133,25 @@ class SplineROITool extends AnnotationTool {
     const eventDetail = evt.detail;
     const { currentPoints, element } = eventDetail;
     const worldPos = currentPoints.world;
-    const canvasPos = currentPoints.canvas;
 
     const enabledElement = getEnabledElement(element);
     const { viewport, renderingEngine } = enabledElement;
+
+    // const { canvasToWorld } = viewport;
+    // const canvasTestControlPoints = [
+    //   [50, 250],
+    //   [100, 450],
+    //   [400, 400],
+    //   [200, 300],
+    //   [450, 250],
+    // ];
+    //
+    // const worldTestControlPoints = canvasTestControlPoints.map((cp) =>
+    //   canvasToWorld(cp as Types.Point2)
+    // );
+    //
+    // console.log('>>>>> canvasTestControlPoints: ', canvasTestControlPoints);
+    // console.log('>>>>> worldTestControlPoints: ', worldTestControlPoints);
 
     this.isDrawing = true;
 
@@ -143,7 +167,7 @@ class SplineROITool extends AnnotationTool {
 
     const FrameOfReferenceUID = viewport.getFrameOfReferenceUID();
 
-    const annotation = {
+    const annotation: SplineROIAnnotation = {
       highlighted: true,
       invalidated: true,
       metadata: {
@@ -166,17 +190,19 @@ class SplineROITool extends AnnotationTool {
               bottomRight: <Types.Point3>[0, 0, 0],
             },
           },
-          points: [[...worldPos], [...worldPos]] as [
-            Types.Point3, // center
-            Types.Point3 // end
-          ],
+          points: [[...worldPos]],
+          // points: worldTestControlPoints,
           activeHandleIndex: null,
+        },
+        spline: {
+          closed: false,
         },
         cachedStats: {},
       },
     };
 
     addAnnotation(annotation, element);
+    this._createOrUpdateAnnotationSpline(element, annotation);
 
     const viewportIdsToRender = getViewportIdsWithToolToRender(
       element,
@@ -189,12 +215,10 @@ class SplineROITool extends AnnotationTool {
       newAnnotation: true,
       hasMoved: false,
     };
+
     this._activateDraw(element);
-
-    hideElementCursor(element);
-
+    // hideElementCursor(element);
     evt.preventDefault();
-
     triggerAnnotationRenderForViewportIds(renderingEngine, viewportIdsToRender);
 
     return annotation;
@@ -217,36 +241,16 @@ class SplineROITool extends AnnotationTool {
     canvasCoords: Types.Point2,
     proximity: number
   ): boolean => {
-    const enabledElement = getEnabledElement(element);
-    const { viewport } = enabledElement;
+    const spline = this._getAnnotationSpline(element, annotation);
 
-    const { data } = annotation;
-    const { points } = data.handles;
-
-    // For some reason Typescript doesn't understand this, so we need to be
-    // more specific about the type
-    const canvasCoordinates = points.map((p) => viewport.worldToCanvas(p)) as [
-      Types.Point2,
-      Types.Point2
-    ];
-
-    const radius = getCanvasCircleRadius(canvasCoordinates);
-    const radiusPoint = getCanvasCircleRadius([
-      canvasCoordinates[0],
-      canvasCoords,
-    ]);
-
-    if (Math.abs(radiusPoint - radius) < proximity / 2) {
-      return true;
-    }
-
-    return false;
+    return spline.isPointNearCurve(canvasCoords, proximity);
   };
 
   toolSelectedCallback = (
     evt: EventTypes.InteractionEventType,
     annotation: SplineROIAnnotation
   ): void => {
+    console.log('>>>>> toolSelectedCallback');
     const eventDetail = evt.detail;
     const { element } = eventDetail;
 
@@ -263,7 +267,7 @@ class SplineROITool extends AnnotationTool {
       movingTextBox: false,
     };
 
-    hideElementCursor(element);
+    // hideElementCursor(element);
 
     this._activateModify(element);
 
@@ -280,6 +284,7 @@ class SplineROITool extends AnnotationTool {
     annotation: SplineROIAnnotation,
     handle: ToolHandle
   ): void => {
+    console.log('>>>>> handleSelectedCallback');
     const eventDetail = evt.detail;
     const { element } = eventDetail;
     const { data } = annotation;
@@ -311,7 +316,7 @@ class SplineROITool extends AnnotationTool {
     };
     this._activateModify(element);
 
-    hideElementCursor(element);
+    // hideElementCursor(element);
 
     const enabledElement = getEnabledElement(element);
     const { renderingEngine } = enabledElement;
@@ -322,6 +327,7 @@ class SplineROITool extends AnnotationTool {
   };
 
   _endCallback = (evt: EventTypes.InteractionEventType): void => {
+    console.log('>>>>> _endCallback');
     const eventDetail = evt.detail;
     const { element } = eventDetail;
 
@@ -329,27 +335,20 @@ class SplineROITool extends AnnotationTool {
       this.editData;
     const { data } = annotation;
 
-    if (newAnnotation && !hasMoved) {
-      return;
-    }
+    // if (newAnnotation && !hasMoved) {
+    //   // when user starts the drawing by click, and moving the mouse, instead
+    //   // of click and drag
+    //   return;
+    // }
 
-    // Circle ROI tool should reset its highlight to false on mouse up (as opposed
-    // to other tools that keep it highlighted until the user moves. The reason
-    // is that we use top-left and bottom-right handles to define the circle,
-    // and they are by definition not in the circle on mouse up.
-    annotation.highlighted = false;
     data.handles.activeHandleIndex = null;
 
     this._deactivateModify(element);
     this._deactivateDraw(element);
-
     resetElementCursor(element);
 
     const enabledElement = getEnabledElement(element);
     const { renderingEngine } = enabledElement;
-
-    this.editData = null;
-    this.isDrawing = false;
 
     if (
       this.isHandleOutsideImage &&
@@ -369,6 +368,103 @@ class SplineROITool extends AnnotationTool {
 
       triggerEvent(eventTarget, eventType, eventDetail);
     }
+
+    this.editData = null;
+    this.isDrawing = false;
+  };
+
+  private _keyDownCallback = (evt: EventTypes.KeyDownEventType) => {
+    const eventDetail = evt.detail;
+    const { element, keyCode } = eventDetail;
+    const key = (eventDetail.key ?? '').toLowerCase();
+    const deleteLastPoint =
+      keyCode === 8 ||
+      keyCode === 46 ||
+      key === 'backspace' ||
+      key === 'delete';
+
+    if (!deleteLastPoint) {
+      return;
+    }
+
+    const { annotation, viewportIdsToRender } = this.editData;
+    const { data } = annotation;
+
+    if (data.handles.points.length === 1) {
+      this.cancel(element);
+      return;
+    } else {
+      data.handles.points.pop();
+    }
+
+    this._createOrUpdateAnnotationSpline(element, annotation);
+
+    const enabledElement = getEnabledElement(element);
+    const { renderingEngine } = enabledElement;
+
+    triggerAnnotationRenderForViewportIds(renderingEngine, viewportIdsToRender);
+    evt.preventDefault();
+  };
+
+  private _mouseDrawCallback = (evt: EventTypes.InteractionEventType): void => {
+    const doubleClick = evt.type === Events.MOUSE_DOUBLE_CLICK;
+    const { annotation, viewportIdsToRender } = this.editData;
+    const { data } = annotation;
+
+    if (data.spline.closed) {
+      return;
+    }
+
+    const eventDetail = evt.detail;
+    const { element } = eventDetail;
+    const { currentPoints } = eventDetail;
+    const { canvas: canvasPoint, world: worldPoint } = currentPoints;
+    const enabledElement = getEnabledElement(element);
+    const { renderingEngine } = enabledElement;
+    let closeSpline = data.handles.points.length >= 2 && doubleClick;
+    let addNewPoint = true;
+
+    // Check if user clicked on the first point to close the curve
+    if (data.handles.points.length >= 3) {
+      const spline = this._getAnnotationSpline(element, annotation);
+      const closestControlPoint = spline.getClosestControlPointWithinRange(
+        canvasPoint[0],
+        canvasPoint[1],
+        SPLINE_CLICK_CLOSE_CURVE_DIST
+      );
+
+      if (closestControlPoint?.index === 0) {
+        addNewPoint = false;
+        closeSpline = true;
+      }
+
+      // Only close the curve and do not add a new control point
+      // if (closestControlPoint?.index === 0) {
+      //   data.spline.closed = true;
+      //   annotation.invalidated = true;
+      //   this._createOrUpdateAnnotationSpline(element, annotation);
+
+      //   this.isDrawing = false;
+      //   this._deactivateDraw(element);
+      // }
+    }
+
+    if (addNewPoint) {
+      data.handles.points.push(worldPoint);
+    }
+
+    data.spline.closed = data.spline.closed || closeSpline;
+    annotation.invalidated = true;
+    this._createOrUpdateAnnotationSpline(element, annotation);
+    triggerAnnotationRenderForViewportIds(renderingEngine, viewportIdsToRender);
+
+    if (data.spline.closed) {
+      // this.isDrawing = false;
+      // this._deactivateDraw(element);
+      this._endCallback(evt);
+    }
+
+    evt.preventDefault();
   };
 
   _dragDrawCallback = (evt: EventTypes.InteractionEventType): void => {
@@ -407,7 +503,8 @@ class SplineROITool extends AnnotationTool {
     const { data } = annotation;
 
     if (movingTextBox) {
-      const { deltaPoints } = eventDetail;
+      // Drag mode - moving text box
+      const { deltaPoints } = eventDetail as EventTypes.MouseDragEventDetail;
       const worldPosDelta = deltaPoints.world;
 
       const { textBox } = data.handles;
@@ -419,8 +516,8 @@ class SplineROITool extends AnnotationTool {
 
       textBox.hasMoved = true;
     } else if (handleIndex === undefined) {
-      // Moving tool
-      const { deltaPoints } = eventDetail;
+      // Drag mode - moving handle
+      const { deltaPoints } = eventDetail as EventTypes.MouseDragEventDetail;
       const worldPosDelta = deltaPoints.world;
 
       const points = data.handles.points;
@@ -432,8 +529,18 @@ class SplineROITool extends AnnotationTool {
       });
       annotation.invalidated = true;
     } else {
-      this._dragHandle(evt);
+      // Move mode - after double click, and mouse move to draw
+      const { currentPoints } = eventDetail;
+      const worldPos = currentPoints.world;
+
+      data.handles.points[handleIndex] = [...worldPos];
       annotation.invalidated = true;
+    }
+
+    this.editData.hasMoved = true;
+
+    if (annotation.invalidated) {
+      this._createOrUpdateAnnotationSpline(element, annotation);
     }
 
     const enabledElement = getEnabledElement(element);
@@ -480,43 +587,35 @@ class SplineROITool extends AnnotationTool {
   };
 
   cancel = (element: HTMLDivElement) => {
-    // If it is mid-draw or mid-modify
-    if (this.isDrawing) {
-      this.isDrawing = false;
-      this._deactivateDraw(element);
-      this._deactivateModify(element);
-      resetElementCursor(element);
-
-      const { annotation, viewportIdsToRender, newAnnotation } = this.editData;
-      const { data } = annotation;
-
-      annotation.highlighted = false;
-      data.handles.activeHandleIndex = null;
-
-      const enabledElement = getEnabledElement(element);
-      const { renderingEngine } = enabledElement;
-
-      triggerAnnotationRenderForViewportIds(
-        renderingEngine,
-        viewportIdsToRender
-      );
-
-      if (newAnnotation) {
-        const eventType = Events.ANNOTATION_COMPLETED;
-
-        const eventDetail: AnnotationCompletedEventDetail = {
-          annotation,
-        };
-
-        triggerEvent(eventTarget, eventType, eventDetail);
-      }
-
-      this.editData = null;
-      return annotation.annotationUID;
+    console.log('>>>>> cancel');
+    // If it is not in mid-draw or mid-modify
+    if (!this.isDrawing) {
+      return;
     }
+
+    this.isDrawing = false;
+    this._deactivateDraw(element);
+    this._deactivateModify(element);
+    resetElementCursor(element);
+
+    const { annotation, viewportIdsToRender, newAnnotation } = this.editData;
+
+    if (newAnnotation) {
+      this._deleteAnnotationSpline(annotation);
+      removeAnnotation(annotation.annotationUID);
+    }
+
+    const enabledElement = getEnabledElement(element);
+    const { renderingEngine } = enabledElement;
+
+    triggerAnnotationRenderForViewportIds(renderingEngine, viewportIdsToRender);
+
+    this.editData = null;
+    return annotation.annotationUID;
   };
 
   _activateModify = (element) => {
+    console.log('>>>>> _activateModify');
     state.isInteractingWithTool = true;
 
     element.addEventListener(Events.MOUSE_UP, this._endCallback);
@@ -529,6 +628,7 @@ class SplineROITool extends AnnotationTool {
   };
 
   _deactivateModify = (element) => {
+    console.log('>>>>> _deactivateModify');
     state.isInteractingWithTool = false;
 
     element.removeEventListener(Events.MOUSE_UP, this._endCallback);
@@ -541,29 +641,45 @@ class SplineROITool extends AnnotationTool {
   };
 
   _activateDraw = (element) => {
+    console.log('>>>>> draw :: activate');
     state.isInteractingWithTool = true;
 
-    element.addEventListener(Events.MOUSE_UP, this._endCallback);
-    element.addEventListener(Events.MOUSE_DRAG, this._dragDrawCallback);
-    element.addEventListener(Events.MOUSE_MOVE, this._dragDrawCallback);
-    element.addEventListener(Events.MOUSE_CLICK, this._endCallback);
+    element.addEventListener(Events.KEY_DOWN, this._keyDownCallback);
+    element.addEventListener(Events.MOUSE_DOWN, this._mouseDrawCallback);
+    element.addEventListener(Events.MOUSE_DOWN, this._mouseDrawCallback);
+    element.addEventListener(
+      Events.MOUSE_DOUBLE_CLICK,
+      this._mouseDrawCallback
+    );
+    // element.addEventListener(Events.MOUSE_UP, this._endCallback);
+    // element.addEventListener(Events.MOUSE_DRAG, this._dragDrawCallback);
+    // element.addEventListener(Events.MOUSE_MOVE, this._dragDrawCallback);
+    // element.addEventListener(Events.MOUSE_CLICK, this._endCallback);
 
-    element.addEventListener(Events.TOUCH_END, this._endCallback);
-    element.addEventListener(Events.TOUCH_DRAG, this._dragDrawCallback);
-    element.addEventListener(Events.TOUCH_TAP, this._endCallback);
+    // element.addEventListener(Events.TOUCH_END, this._endCallback);
+    // element.addEventListener(Events.TOUCH_DRAG, this._dragDrawCallback);
+    // element.addEventListener(Events.TOUCH_TAP, this._endCallback);
   };
 
   _deactivateDraw = (element) => {
+    console.log('>>>>> draw :: deactivate');
     state.isInteractingWithTool = false;
 
-    element.removeEventListener(Events.MOUSE_UP, this._endCallback);
-    element.removeEventListener(Events.MOUSE_DRAG, this._dragDrawCallback);
-    element.removeEventListener(Events.MOUSE_MOVE, this._dragDrawCallback);
-    element.removeEventListener(Events.MOUSE_CLICK, this._endCallback);
+    element.removeEventListener(Events.KEY_DOWN, this._keyDownCallback);
+    element.removeEventListener(Events.MOUSE_DOWN, this._mouseDrawCallback);
+    element.removeEventListener(
+      Events.MOUSE_DOUBLE_CLICK,
+      this._mouseDrawCallback
+    );
 
-    element.removeEventListener(Events.TOUCH_END, this._endCallback);
-    element.removeEventListener(Events.TOUCH_DRAG, this._dragDrawCallback);
-    element.removeEventListener(Events.TOUCH_TAP, this._endCallback);
+    // element.removeEventListener(Events.MOUSE_UP, this._endCallback);
+    // element.removeEventListener(Events.MOUSE_DRAG, this._dragDrawCallback);
+    // element.removeEventListener(Events.MOUSE_MOVE, this._dragDrawCallback);
+    // element.removeEventListener(Events.MOUSE_CLICK, this._endCallback);
+
+    // element.removeEventListener(Events.TOUCH_END, this._endCallback);
+    // element.removeEventListener(Events.TOUCH_DRAG, this._dragDrawCallback);
+    // element.removeEventListener(Events.TOUCH_TAP, this._endCallback);
   };
 
   /**
@@ -578,8 +694,9 @@ class SplineROITool extends AnnotationTool {
     enabledElement: Types.IEnabledElement,
     svgDrawingHelper: SVGDrawingHelper
   ): boolean => {
-    let renderStatus = false;
+    const renderStatus = false;
     const { viewport } = enabledElement;
+    const { worldToCanvas } = viewport;
     const { element } = viewport;
 
     let annotations = getAnnotations(this.getToolName(), element);
@@ -597,8 +714,8 @@ class SplineROITool extends AnnotationTool {
       return renderStatus;
     }
 
+    const newAnnotation = this.editData?.newAnnotation;
     const targetId = this.getTargetId(viewport);
-
     const renderingEngine = viewport.getRenderingEngine();
 
     const styleSpecifier: StyleSpecifier = {
@@ -609,90 +726,106 @@ class SplineROITool extends AnnotationTool {
 
     for (let i = 0; i < annotations.length; i++) {
       const annotation = annotations[i] as SplineROIAnnotation;
-      const { annotationUID, data } = annotation;
+      const { annotationUID, data, highlighted } = annotation;
       const { handles } = data;
       const { points, activeHandleIndex } = handles;
 
       styleSpecifier.annotationUID = annotationUID;
 
-      const lineWidth = this.getStyle('lineWidth', styleSpecifier, annotation);
-      const lineDash = this.getStyle('lineDash', styleSpecifier, annotation);
-      const color = this.getStyle('color', styleSpecifier, annotation);
+      const lineWidth = this.getStyle(
+        'lineWidth',
+        styleSpecifier,
+        annotation
+      ) as number;
+      const lineDash = this.getStyle(
+        'lineDash',
+        styleSpecifier,
+        annotation
+      ) as string;
+      const color = this.getStyle(
+        'color',
+        styleSpecifier,
+        annotation
+      ) as string;
 
       const canvasCoordinates = points.map((p) =>
-        viewport.worldToCanvas(p)
-      ) as [Types.Point2, Types.Point2];
-      const center = canvasCoordinates[0];
-      const radius = getCanvasCircleRadius(canvasCoordinates);
-      const canvasCorners = getCanvasCircleCorners(canvasCoordinates);
+        worldToCanvas(p)
+      ) as Types.Point2[];
 
-      const { centerPointRadius } = this.configuration;
+      const spline = this._getAnnotationSpline(element, annotation);
+      const splinePolyline = spline.getPolylinePoints();
+
+      // const center = canvasCoordinates[0];
+      // const radius = getCanvasCircleRadius(canvasCoordinates);
+      // const canvasCorners = getCanvasCircleCorners(canvasCoordinates);
+
+      // const { centerPointRadius } = this.configuration;
 
       // If cachedStats does not exist, or the unit is missing (as part of import/hydration etc.),
       // force to recalculate the stats from the points
-      if (
-        !data.cachedStats[targetId] ||
-        data.cachedStats[targetId].areaUnit == null
-      ) {
-        data.cachedStats[targetId] = {
-          Modality: null,
-          area: null,
-          max: null,
-          mean: null,
-          stdDev: null,
-          areaUnit: null,
-          radius: null,
-          radiusUnit: null,
-          perimeter: null,
-        };
+      // if (
+      //   !data.cachedStats[targetId] ||
+      //   data.cachedStats[targetId].areaUnit == null
+      // ) {
+      //   data.cachedStats[targetId] = {
+      //     Modality: null,
+      //     area: null,
+      //     max: null,
+      //     mean: null,
+      //     stdDev: null,
+      //     areaUnit: null,
+      //     radius: null,
+      //     radiusUnit: null,
+      //     perimeter: null,
+      //   };
 
-        this._calculateCachedStats(
-          annotation,
-          viewport,
-          renderingEngine,
-          enabledElement
-        );
-      } else if (annotation.invalidated) {
-        this._throttledCalculateCachedStats(
-          annotation,
-          viewport,
-          renderingEngine,
-          enabledElement
-        );
-        // If the invalidated data is as a result of volumeViewport manipulation
-        // of the tools, we need to invalidate the related viewports data, so that
-        // when scrolling to the related slice in which the tool were manipulated
-        // we re-render the correct tool position. This is due to stackViewport
-        // which doesn't have the full volume at each time, and we are only working
-        // on one slice at a time.
-        if (viewport instanceof VolumeViewport) {
-          const { referencedImageId } = annotation.metadata;
+      //   this._calculateCachedStats(
+      //     annotation,
+      //     viewport,
+      //     renderingEngine,
+      //     enabledElement
+      //   );
+      // } else if (annotation.invalidated) {
+      //   this._throttledCalculateCachedStats(
+      //     annotation,
+      //     viewport,
+      //     renderingEngine,
+      //     enabledElement
+      //   );
+      //   // If the invalidated data is as a result of volumeViewport manipulation
+      //   // of the tools, we need to invalidate the related viewports data, so that
+      //   // when scrolling to the related slice in which the tool were manipulated
+      //   // we re-render the correct tool position. This is due to stackViewport
+      //   // which doesn't have the full volume at each time, and we are only working
+      //   // on one slice at a time.
+      //   if (viewport instanceof VolumeViewport) {
+      //     const { referencedImageId } = annotation.metadata;
 
-          // invalidate all the relevant stackViewports if they are not
-          // at the referencedImageId
-          for (const targetId in data.cachedStats) {
-            if (targetId.startsWith('imageId')) {
-              const viewports = renderingEngine.getStackViewports();
+      //     // invalidate all the relevant stackViewports if they are not
+      //     // at the referencedImageId
+      //     for (const targetId in data.cachedStats) {
+      //       if (targetId.startsWith('imageId')) {
+      //         const viewports = renderingEngine.getStackViewports();
 
-              const invalidatedStack = viewports.find((vp) => {
-                // The stack viewport that contains the imageId but is not
-                // showing it currently
-                const referencedImageURI =
-                  csUtils.imageIdToURI(referencedImageId);
-                const hasImageURI = vp.hasImageURI(referencedImageURI);
-                const currentImageURI = csUtils.imageIdToURI(
-                  vp.getCurrentImageId()
-                );
-                return hasImageURI && currentImageURI !== referencedImageURI;
-              });
+      //         const invalidatedStack = viewports.find((vp) => {
+      //           // The stack viewport that contains the imageId but is not
+      //           // showing it currently
+      //           const referencedImageURI =
+      //             csUtils.imageIdToURI(referencedImageId);
+      //           const hasImageURI = vp.hasImageURI(referencedImageURI);
+      //           const currentImageURI = csUtils.imageIdToURI(
+      //             vp.getCurrentImageId()
+      //           );
+      //           return hasImageURI && currentImageURI !== referencedImageURI;
+      //         });
 
-              if (invalidatedStack) {
-                delete data.cachedStats[targetId];
-              }
-            }
-          }
-        }
-      }
+      //         if (invalidatedStack) {
+      //           delete data.cachedStats[targetId];
+      //         }
+      //       }
+      //     }
+      //   }
+      // }
 
       // If rendering engine has been destroyed while rendering
       if (!viewport.getRenderingEngine()) {
@@ -715,109 +848,142 @@ class SplineROITool extends AnnotationTool {
         activeHandleCanvasCoords = [canvasCoordinates[activeHandleIndex]];
       }
 
-      if (activeHandleCanvasCoords) {
+      if (activeHandleCanvasCoords || newAnnotation || highlighted) {
         const handleGroupUID = '0';
         drawHandlesSvg(
           svgDrawingHelper,
           annotationUID,
           handleGroupUID,
-          activeHandleCanvasCoords,
+          canvasCoordinates,
           {
             color,
+            lineDash,
+            lineWidth,
+            handleRadius: '3',
           }
         );
       }
 
-      const dataId = `${annotationUID}-circle`;
-      const circleUID = '0';
-      drawCircleSvg(
+      const controlPointsConnectors = [...canvasCoordinates];
+
+      if (spline.closed) {
+        controlPointsConnectors.push(canvasCoordinates[0]);
+      }
+
+      drawPolylineSvg(
         svgDrawingHelper,
         annotationUID,
-        circleUID,
-        center,
-        radius,
+        'controlPointsConnectors',
+        controlPointsConnectors,
+        {
+          color: 'rgba(255, 255,, 255, 0.5)',
+          lineDash,
+          lineWidth,
+        }
+      );
+
+      drawPolylineSvg(
+        svgDrawingHelper,
+        annotationUID,
+        'lineSegments',
+        splinePolyline,
         {
           color,
           lineDash,
           lineWidth,
-        },
-        dataId
-      );
-
-      // draw center point, if "centerPointRadius" configuration is valid.
-      if (centerPointRadius > 0) {
-        if (radius > 3 * centerPointRadius) {
-          drawCircleSvg(
-            svgDrawingHelper,
-            annotationUID,
-            `${circleUID}-center`,
-            center,
-            centerPointRadius,
-            {
-              color,
-              lineDash,
-              lineWidth,
-            }
-          );
         }
-      }
-
-      renderStatus = true;
-
-      const options = this.getLinkedTextBoxStyle(styleSpecifier, annotation);
-      if (!options.visibility) {
-        data.handles.textBox = {
-          hasMoved: false,
-          worldPosition: <Types.Point3>[0, 0, 0],
-          worldBoundingBox: {
-            topLeft: <Types.Point3>[0, 0, 0],
-            topRight: <Types.Point3>[0, 0, 0],
-            bottomLeft: <Types.Point3>[0, 0, 0],
-            bottomRight: <Types.Point3>[0, 0, 0],
-          },
-        };
-        continue;
-      }
-
-      const textLines = this.configuration.getTextLines(data, targetId);
-      if (!textLines || textLines.length === 0) {
-        continue;
-      }
-
-      // Poor man's cached?
-      let canvasTextBoxCoords;
-
-      if (!data.handles.textBox.hasMoved) {
-        canvasTextBoxCoords = getTextBoxCoordsCanvas(canvasCorners);
-
-        data.handles.textBox.worldPosition =
-          viewport.canvasToWorld(canvasTextBoxCoords);
-      }
-
-      const textBoxPosition = viewport.worldToCanvas(
-        data.handles.textBox.worldPosition
       );
 
-      const textBoxUID = '1';
-      const boundingBox = drawLinkedTextBoxSvg(
-        svgDrawingHelper,
-        annotationUID,
-        textBoxUID,
-        textLines,
-        textBoxPosition,
-        canvasCoordinates,
-        {},
-        options
-      );
+      // const dataId = `${annotationUID}-circle`;
+      // const circleUID = '0';
+      // drawCircleSvg(
+      //   svgDrawingHelper,
+      //   annotationUID,
+      //   circleUID,
+      //   center,
+      //   radius,
+      //   {
+      //     color,
+      //     lineDash,
+      //     lineWidth,
+      //   },
+      //   dataId
+      // );
 
-      const { x: left, y: top, width, height } = boundingBox;
+      // // draw center point, if "centerPointRadius" configuration is valid.
+      // if (centerPointRadius > 0) {
+      //   if (radius > 3 * centerPointRadius) {
+      //     drawCircleSvg(
+      //       svgDrawingHelper,
+      //       annotationUID,
+      //       `${circleUID}-center`,
+      //       center,
+      //       centerPointRadius,
+      //       {
+      //         color,
+      //         lineDash,
+      //         lineWidth,
+      //       }
+      //     );
+      //   }
+      // }
 
-      data.handles.textBox.worldBoundingBox = {
-        topLeft: viewport.canvasToWorld([left, top]),
-        topRight: viewport.canvasToWorld([left + width, top]),
-        bottomLeft: viewport.canvasToWorld([left, top + height]),
-        bottomRight: viewport.canvasToWorld([left + width, top + height]),
-      };
+      // renderStatus = true;
+
+      // const options = this.getLinkedTextBoxStyle(styleSpecifier, annotation);
+      // if (!options.visibility) {
+      //   data.handles.textBox = {
+      //     hasMoved: false,
+      //     worldPosition: <Types.Point3>[0, 0, 0],
+      //     worldBoundingBox: {
+      //       topLeft: <Types.Point3>[0, 0, 0],
+      //       topRight: <Types.Point3>[0, 0, 0],
+      //       bottomLeft: <Types.Point3>[0, 0, 0],
+      //       bottomRight: <Types.Point3>[0, 0, 0],
+      //     },
+      //   };
+      //   continue;
+      // }
+
+      // const textLines = this.configuration.getTextLines(data, targetId);
+      // if (!textLines || textLines.length === 0) {
+      //   continue;
+      // }
+
+      // // Poor man's cached?
+      // let canvasTextBoxCoords;
+
+      // if (!data.handles.textBox.hasMoved) {
+      //   canvasTextBoxCoords = getTextBoxCoordsCanvas(canvasCorners);
+
+      //   data.handles.textBox.worldPosition =
+      //     viewport.canvasToWorld(canvasTextBoxCoords);
+      // }
+
+      // const textBoxPosition = viewport.worldToCanvas(
+      //   data.handles.textBox.worldPosition
+      // );
+
+      // const textBoxUID = '1';
+      // const boundingBox = drawLinkedTextBoxSvg(
+      //   svgDrawingHelper,
+      //   annotationUID,
+      //   textBoxUID,
+      //   textLines,
+      //   textBoxPosition,
+      //   canvasCoordinates,
+      //   {},
+      //   options
+      // );
+
+      // const { x: left, y: top, width, height } = boundingBox;
+
+      // data.handles.textBox.worldBoundingBox = {
+      //   topLeft: viewport.canvasToWorld([left, top]),
+      //   topRight: viewport.canvasToWorld([left + width, top]),
+      //   bottomLeft: viewport.canvasToWorld([left, top + height]),
+      //   bottomRight: viewport.canvasToWorld([left + width, top + height]),
+      // };
     }
 
     return renderStatus;
@@ -991,6 +1157,47 @@ class SplineROITool extends AnnotationTool {
       csUtils.indexWithinDimensions(index1, dimensions) &&
       csUtils.indexWithinDimensions(index2, dimensions)
     );
+  };
+
+  private _createOrUpdateAnnotationSpline = (
+    element: HTMLDivElement,
+    annotation: SplineROIAnnotation
+  ): ISpline => {
+    const enabledElement = getEnabledElement(element);
+    const { viewport } = enabledElement;
+    const { worldToCanvas } = viewport;
+    let spline = this.splines.get(annotation.annotationUID);
+
+    if (!spline) {
+      spline = new BSpline();
+      this.splines.set(annotation.annotationUID, spline);
+    }
+
+    const { data } = annotation;
+    const worldPoints = data.handles.points;
+    const canvasPoints = worldPoints.map(worldToCanvas);
+
+    spline.setControlPoints(canvasPoints);
+    spline.closed = !!data.spline?.closed;
+
+    return spline;
+  };
+
+  private _getAnnotationSpline = (
+    element: HTMLDivElement,
+    annotation: SplineROIAnnotation
+  ) => {
+    let spline = this.splines.get(annotation.annotationUID);
+
+    if (!spline) {
+      spline = this._createOrUpdateAnnotationSpline(element, annotation);
+    }
+
+    return spline;
+  };
+
+  private _deleteAnnotationSpline = (annotation: SplineROIAnnotation) => {
+    this.splines.delete(annotation.annotationUID);
   };
 }
 

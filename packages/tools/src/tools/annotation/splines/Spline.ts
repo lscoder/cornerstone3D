@@ -1,7 +1,8 @@
-import type { Point2 } from './types/Point2';
+import type { Point2 } from '../math/types/Point2';
 import type { ISpline } from './types/ISpline';
 import type { SplineProps } from './types/SplineProps';
-import type { AABB } from './types/AABB';
+import type { AABB } from '../math/types/AABB';
+import * as math from '../math';
 import type { SplineCurveSegment } from './types/SplineCurveSegment';
 import type { ClosestControlPoint } from './types/ClosestControlPoint';
 
@@ -103,6 +104,16 @@ abstract class Spline implements ISpline {
     points.forEach((point) => this.addControlPoint(point[0], point[1]));
   }
 
+  public clearControlPoints(): void {
+    this._controlPoints = [];
+    this.invalidated = true;
+  }
+
+  public setControlPoints(points: Point2[]): void {
+    this.clearControlPoints();
+    this.addControlPoints(points);
+  }
+
   public updateControlPoint(index: number, x: number, y: number): void {
     if (index < 0 || index >= this._controlPoints.length) {
       throw new Error('Index out of bounds');
@@ -181,6 +192,41 @@ abstract class Spline implements ISpline {
     }
 
     return polylinePoints2;
+  }
+
+  public isPointNearCurve(point: Point2, maxDist: number): boolean {
+    this._update();
+
+    const { _curveSegments: curveSegments } = this;
+    const maxDistSquared = maxDist * maxDist;
+
+    for (let i = 0; i < curveSegments.length; i++) {
+      const curveSegment = curveSegments[i];
+      const { aabb } = curveSegment;
+
+      // Since each curve segment have 20 line segments by default it is cheaper to check if the
+      // point is near to the AABB first instead of doing the math for all 20 line segments.
+      if (math.aabb.getPointAABBDistanceSquared(aabb, point) > maxDistSquared) {
+        continue;
+      }
+
+      const { lineSegments } = curveSegment;
+
+      for (let j = 0; j < lineSegments.length; j++) {
+        const lineSegment = lineSegments[j];
+        const lineDistSquared = math.line.distanceToPointSquared(
+          lineSegment.points.start,
+          lineSegment.points.end,
+          point
+        );
+
+        if (lineDistSquared <= maxDist) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   public containsPoint(x: number, y: number): boolean {

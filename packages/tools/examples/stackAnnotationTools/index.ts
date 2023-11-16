@@ -109,12 +109,12 @@ element.addEventListener(csToolsEnums.Events.KEY_DOWN, (evt) => {
 });
 
 const toolsNames = [
+  SplineROITool.toolName,
   LengthTool.toolName,
   ProbeTool.toolName,
   RectangleROITool.toolName,
   EllipticalROITool.toolName,
   CircleROITool.toolName,
-  SplineROITool.toolName,
   BidirectionalTool.toolName,
   AngleTool.toolName,
   CobbAngleTool.toolName,
@@ -239,7 +239,7 @@ async function run() {
 
   // Set the initial state of the tools, here we set one tool active on left click.
   // This means left click will draw that tool.
-  toolGroup.setToolActive(LengthTool.toolName, {
+  toolGroup.setToolActive(SplineROITool.toolName, {
     bindings: [
       {
         mouseButton: MouseBindings.Primary, // Left Click
@@ -252,7 +252,7 @@ async function run() {
   toolGroup.setToolPassive(RectangleROITool.toolName);
   toolGroup.setToolPassive(EllipticalROITool.toolName);
   toolGroup.setToolPassive(CircleROITool.toolName);
-  toolGroup.setToolPassive(SplineROITool.toolName);
+  // toolGroup.setToolPassive(SplineROITool.toolName);
   toolGroup.setToolPassive(BidirectionalTool.toolName);
   toolGroup.setToolPassive(AngleTool.toolName);
   toolGroup.setToolPassive(ArrowAnnotateTool.toolName);

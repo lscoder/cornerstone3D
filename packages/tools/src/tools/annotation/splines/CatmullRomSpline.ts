@@ -1,8 +1,8 @@
 import { CardinalSpline } from './CardinalSpline';
 
-// Catmull-Rom spline matrix is the same one from Cardinal spline with scale equal to 1/2. Then
-// it can inherit from CubicSpline using the matrix below or inherit from CardinalSpline fixing
-// the scale to 0.5
+// Catmull-Rom spline matrix is a Cardinal spline with scale equal to 1/2. Then
+// it can inherit from CubicSpline using the matrix below or inherit from
+// CardinalSpline using a fixed scale equal to 0.5.
 //
 // Transformation Matrix:
 //      0,  2,  0,  0,

@@ -24,8 +24,8 @@ abstract class CubicSpline extends Spline {
   /**
    * Get a point on a spline curve given `u` value
    *
-   * @param u - Parameter space between 0 and N where N is the number of curve segments for opened
-   *   splines or any negative/positive number for closed splines
+   * @param u - `u` value in Parameter Space that must be between 0 and N where N is the number of
+   *   curve segments for opened splines or any negative/positive number for closed splines
    * @returns - Point (x, y) on the spline. It may return `undefined` when `u` is smaller than 0
    *   or greater than N for opened splines
    */

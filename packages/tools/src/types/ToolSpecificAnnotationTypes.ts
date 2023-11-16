@@ -120,7 +120,8 @@ export interface CircleROIAnnotation extends Annotation {
 export interface SplineROIAnnotation extends Annotation {
   data: {
     handles: {
-      points: [Types.Point3, Types.Point3]; // [center, end]
+      points: Types.Point3[];
+      // controlPoints: Types.Point3[];
       activeHandleIndex: number | null;
       textBox?: {
         hasMoved: boolean;
@@ -132,6 +133,10 @@ export interface SplineROIAnnotation extends Annotation {
           bottomRight: Types.Point3;
         };
       };
+    };
+    spline: {
+      type: string;
+      closed: boolean;
     };
     label: string;
     cachedStats?: ROICachedStats & {
