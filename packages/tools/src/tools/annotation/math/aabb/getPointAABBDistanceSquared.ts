@@ -2,7 +2,14 @@ import type { AABB } from '../types/AABB';
 import type { Point2 } from '../types/Point2';
 
 /**
- * Calculates the distance of a point to a AABB (Box SDF)
+ * Calculates the distance of a point to an AABB using 2D Box SDF (Signed Distance Field)
+ *
+ * The SDF of a Box
+ * https://www.youtube.com/watch?v=62-pRVZuS5c
+ *
+ * @param aabb - Axis-aligned bound box
+ * @param point - 2D point
+ * @returns The closest distance between the 2D point and the AABB
  */
 export function getPointAABBDistanceSquared(aabb: AABB, point: Point2): number {
   const aabbSize = [aabb.maxX - aabb.minX, aabb.maxY - aabb.minY];

@@ -31,7 +31,7 @@ import {
   drawLinkedTextBox as drawLinkedTextBoxSvg,
 } from '../../drawingSvg';
 import { state } from '../../store';
-import { Events } from '../../enums';
+import { Events, MouseBindings, KeyboardBindings } from '../../enums';
 import { getViewportIdsWithToolToRender } from '../../utilities/viewportFilters';
 import { getTextBoxCoordsCanvas } from '../../utilities/drawing';
 import getWorldWidthAndHeightFromTwoPoints from '../../utilities/planar/getWorldWidthAndHeightFromTwoPoints';
@@ -73,6 +73,7 @@ import { CardinalSpline } from './splines/CardinalSpline';
 import { LinearSpline } from './splines/LinearSpline';
 import { CatmullRomSpline } from './splines/CatmullRomSpline';
 import { BSpline } from './splines/BSpline';
+import getMouseModifier from '../../eventDispatchers/shared/getMouseModifier';
 
 const SPLINE_CLICK_CLOSE_CURVE_DIST = 10;
 const { transformWorldToIndex } = csUtils;
@@ -107,6 +108,27 @@ class SplineROITool extends AnnotationTool {
         centerPointRadius: 0,
         getTextLines: defaultGetTextLines,
         statsCalculator: BasicStatsCalculator,
+
+        actions: [
+          {
+            method: 'addControlPoint',
+            bindings: [
+              {
+                mouseButton: MouseBindings.Primary,
+                modifierKey: KeyboardBindings.Shift,
+              },
+            ],
+          },
+          {
+            method: 'removeControlPoint',
+            bindings: [
+              {
+                mouseButton: MouseBindings.Primary,
+                modifierKey: KeyboardBindings.Ctrl,
+              },
+            ],
+          },
+        ],
       },
     }
   ) {
@@ -118,6 +140,46 @@ class SplineROITool extends AnnotationTool {
       { trailing: true }
     );
   }
+
+  addControlPoint = (
+    evt: EventTypes.InteractionEventType,
+    annotation: SplineROIAnnotation
+  ) => {
+    console.log('addControlPoint', evt, annotation);
+    const eventDetail = evt.detail;
+    const { element } = eventDetail;
+
+    const viewportIdsToRender = getViewportIdsWithToolToRender(
+      element,
+      this.getToolName()
+    );
+
+    const enabledElement = getEnabledElement(element);
+    const { renderingEngine, viewport } = enabledElement;
+    const { canvasToWorld } = viewport;
+
+    const spline = this._getAnnotationSpline(element, annotation);
+    const canvasPos = evt.detail.currentPoints.canvas;
+    const closestPointInfo = spline.getClosestPoint(canvasPos);
+
+    if (closestPointInfo.distance <= 6) {
+      spline.addControlPointAt(closestPointInfo.uValue);
+      annotation.data.handles.points = spline
+        .getControlPoints()
+        .map((p) => canvasToWorld(p));
+      annotation.invalidated = true;
+    }
+
+    triggerAnnotationRenderForViewportIds(renderingEngine, viewportIdsToRender);
+    // return true;
+  };
+
+  removeControlPoint = (
+    evt: EventTypes.InteractionEventType,
+    annotation: SplineROIAnnotation
+  ) => {
+    console.log('removeControlPoint', evt, annotation);
+  };
 
   /**
    * Based on the current position of the mouse and the current imageId to create
@@ -195,6 +257,7 @@ class SplineROITool extends AnnotationTool {
           activeHandleIndex: null,
         },
         spline: {
+          type: 'catmullrom',
           closed: false,
         },
         cachedStats: {},
@@ -250,7 +313,6 @@ class SplineROITool extends AnnotationTool {
     evt: EventTypes.InteractionEventType,
     annotation: SplineROIAnnotation
   ): void => {
-    console.log('>>>>> toolSelectedCallback');
     const eventDetail = evt.detail;
     const { element } = eventDetail;
 
@@ -269,13 +331,11 @@ class SplineROITool extends AnnotationTool {
 
     // hideElementCursor(element);
 
-    this._activateModify(element);
-
     const enabledElement = getEnabledElement(element);
     const { renderingEngine } = enabledElement;
 
+    this._activateModify(element);
     triggerAnnotationRenderForViewportIds(renderingEngine, viewportIdsToRender);
-
     evt.preventDefault();
   };
 
@@ -285,6 +345,10 @@ class SplineROITool extends AnnotationTool {
     handle: ToolHandle
   ): void => {
     console.log('>>>>> handleSelectedCallback');
+    console.log('>>>>> evt', evt);
+    const modifiers = getMouseModifier(evt.detail.event);
+    console.log('>>>>> modifiers', modifiers);
+
     const eventDetail = evt.detail;
     const { element } = eventDetail;
     const { data } = annotation;
@@ -428,8 +492,7 @@ class SplineROITool extends AnnotationTool {
     if (data.handles.points.length >= 3) {
       const spline = this._getAnnotationSpline(element, annotation);
       const closestControlPoint = spline.getClosestControlPointWithinRange(
-        canvasPoint[0],
-        canvasPoint[1],
+        canvasPoint,
         SPLINE_CLICK_CLOSE_CURVE_DIST
       );
 
@@ -864,6 +927,7 @@ class SplineROITool extends AnnotationTool {
         );
       }
 
+      // if (data.spline.type === 'bspline') {
       const controlPointsConnectors = [...canvasCoordinates];
 
       if (spline.closed) {
@@ -881,6 +945,7 @@ class SplineROITool extends AnnotationTool {
           lineWidth,
         }
       );
+      // }
 
       drawPolylineSvg(
         svgDrawingHelper,
@@ -1169,7 +1234,7 @@ class SplineROITool extends AnnotationTool {
     let spline = this.splines.get(annotation.annotationUID);
 
     if (!spline) {
-      spline = new BSpline();
+      spline = new CatmullRomSpline();
       this.splines.set(annotation.annotationUID, spline);
     }
 

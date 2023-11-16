@@ -1,5 +1,5 @@
-import type { AABB } from './AABB';
-import type { Point2 } from './Point2';
+import type { AABB } from '../../math/types/AABB';
+import type { Point2 } from '../../math/types/Point2';
 import type { SplineLineSegment } from './SplineLineSegment';
 
 export type SplineCurveSegment = {
@@ -11,5 +11,6 @@ export type SplineCurveSegment = {
   };
   aabb: AABB;
   length: number;
+  lengthStart: number;
   lineSegments: SplineLineSegment[];
 };

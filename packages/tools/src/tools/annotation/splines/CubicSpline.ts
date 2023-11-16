@@ -1,6 +1,6 @@
 import { Spline } from './Spline';
-import type { Point2 } from './types/Point2';
-import type { AABB } from './types/AABB';
+import type { Point2 } from '../math/types/Point2';
+import type { AABB } from '../math/types/AABB';
 import type { SplineCurveSegment } from './types/SplineCurveSegment';
 import type { SplineLineSegment } from './types/SplineLineSegment';
 
@@ -15,10 +15,54 @@ function getMirroredPoint(mirrorPoint: Point2, staticPoint: Point2): Point2 {
 }
 
 abstract class CubicSpline extends Spline {
-  public getNumCurveSegments(): number {
+  protected getSplineCurves(): SplineCurveSegment[] {
+    const numCurveSegments = this.getNumCurveSegments();
+    const curveSegments: SplineCurveSegment[] = new Array(numCurveSegments);
+
+    if (numCurveSegments <= 0) {
+      return [];
+    }
+
+    const transformMatrix = this.getTransformMatrix();
+    let lengthStart = 0;
+
+    for (let i = 0; i < numCurveSegments; i++) {
+      const { p0, p1, p2, p3 } = this._getCurveSegmentPoints(i);
+      const lineSegments = this._getLineSegments(i, transformMatrix);
+      let curveSegmentLength = 0;
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+
+      lineSegments.forEach((lineSegment) => {
+        const { aabb: lineSegAABB } = lineSegment;
+
+        minX = minX <= lineSegAABB.minX ? minX : lineSegAABB.minX;
+        minY = minY <= lineSegAABB.minY ? minY : lineSegAABB.minY;
+        maxX = maxX >= lineSegAABB.maxX ? maxX : lineSegAABB.maxX;
+        maxY = maxY >= lineSegAABB.maxY ? maxY : lineSegAABB.maxY;
+        curveSegmentLength += lineSegment.length;
+      });
+
+      curveSegments[i] = {
+        controlPoints: { p0, p1, p2, p3 },
+        aabb: { minX, minY, maxX, maxY },
+        length: curveSegmentLength,
+        lengthStart,
+        lineSegments,
+      };
+
+      lengthStart += curveSegmentLength;
+    }
+
+    return curveSegments;
+  }
+
+  private getNumCurveSegments(): number {
     return this.closed
       ? this.controlPoints.length
-      : this.controlPoints.length - 1;
+      : Math.max(0, this.controlPoints.length - 1);
   }
 
   /**
@@ -29,7 +73,7 @@ abstract class CubicSpline extends Spline {
    * @returns - Point (x, y) on the spline. It may return `undefined` when `u` is smaller than 0
    *   or greater than N for opened splines
    */
-  public getPoint(u: number, transformMatrix: number[]): Point2 {
+  private getPoint(u: number, transformMatrix: number[]): Point2 {
     const numCurveSegments = this.getNumCurveSegments();
     const uInt = Math.floor(u);
     let curveSegmentIndex = uInt % numCurveSegments;
@@ -85,46 +129,6 @@ abstract class CubicSpline extends Spline {
     return [tx, ty];
   }
 
-  protected getSplineCurves(): SplineCurveSegment[] {
-    const numCurveSegments = this.getNumCurveSegments();
-    const curveSegments = new Array(numCurveSegments);
-
-    if (numCurveSegments <= 0) {
-      return [];
-    }
-
-    const transformMatrix = this.getTransformMatrix();
-
-    for (let i = 0; i < numCurveSegments; i++) {
-      const { p0, p1, p2, p3 } = this._getCurveSegmentPoints(i);
-      const lineSegments = this._getLineSegments(i, transformMatrix);
-      let curveSegmentLength = 0;
-      let minX = Infinity;
-      let minY = Infinity;
-      let maxX = -Infinity;
-      let maxY = -Infinity;
-
-      lineSegments.forEach((lineSegment) => {
-        const { aabb: lineSegAABB } = lineSegment;
-
-        minX = minX <= lineSegAABB.minX ? minX : lineSegAABB.minX;
-        minY = minY <= lineSegAABB.minY ? minY : lineSegAABB.minY;
-        maxX = maxX >= lineSegAABB.maxX ? maxX : lineSegAABB.maxX;
-        maxY = maxY >= lineSegAABB.maxY ? maxY : lineSegAABB.maxY;
-        curveSegmentLength += lineSegment.length;
-      });
-
-      curveSegments[i] = {
-        controlPoints: { p0, p1, p2, p3 },
-        aabb: { minX, minY, maxX, maxY },
-        length: curveSegmentLength,
-        lineSegments,
-      };
-    }
-
-    return curveSegments;
-  }
-
   private _getCurveSegmentPoints(curveSegmentIndex: number) {
     const numCurveSegments = this.getNumCurveSegments();
     const { controlPoints } = this;
@@ -178,6 +182,7 @@ abstract class CubicSpline extends Spline {
     const lineSegments: SplineLineSegment[] = [];
     let startPoint: Point2;
     let endPoint: Point2;
+    let lengthStart = 0;
 
     for (let i = 0, u = minU; i <= numLineSegments; i++, u += inc) {
       // `u` may be greater than maxU in the last FOR loop due to number precision issue
@@ -185,48 +190,38 @@ abstract class CubicSpline extends Spline {
 
       const point = this.getPoint(u, transformMatrix);
 
-      if (i) {
-        endPoint = point;
-
-        const dx = endPoint[0] - startPoint[0];
-        const dy = endPoint[1] - startPoint[1];
-        const length = Math.sqrt(dx ** 2 + dy ** 2);
-        const aabb: AABB = {
-          minX: startPoint[0] <= endPoint[0] ? startPoint[0] : endPoint[0],
-          maxX: startPoint[0] >= endPoint[0] ? startPoint[0] : endPoint[0],
-          minY: startPoint[1] <= endPoint[1] ? startPoint[1] : endPoint[1],
-          maxY: startPoint[1] >= endPoint[1] ? startPoint[1] : endPoint[1],
-        };
-
-        lineSegments.push({
-          points: {
-            start: startPoint,
-            end: endPoint,
-          },
-          aabb,
-          length,
-        });
-
-        // The start point of the next line segment is the end point of the current one
-        startPoint = endPoint;
-      } else {
+      if (!i) {
         startPoint = point;
+        continue;
       }
+
+      endPoint = point;
+
+      const dx = endPoint[0] - startPoint[0];
+      const dy = endPoint[1] - startPoint[1];
+      const length = Math.sqrt(dx ** 2 + dy ** 2);
+      const aabb: AABB = {
+        minX: startPoint[0] <= endPoint[0] ? startPoint[0] : endPoint[0],
+        maxX: startPoint[0] >= endPoint[0] ? startPoint[0] : endPoint[0],
+        minY: startPoint[1] <= endPoint[1] ? startPoint[1] : endPoint[1],
+        maxY: startPoint[1] >= endPoint[1] ? startPoint[1] : endPoint[1],
+      };
+
+      lineSegments.push({
+        points: {
+          start: startPoint,
+          end: endPoint,
+        },
+        aabb,
+        length,
+        lengthStart,
+      });
+
+      startPoint = endPoint;
+      lengthStart += length;
     }
 
     return lineSegments;
-  }
-
-  private _getTransformMatrixDerivative(transformMatrix: number[]) {
-    // prettier-ignore
-    const [
-      m00, m01, m02, m03,
-      m10, m11, m12, m13,
-      m20, m21, m22, m23,
-      m30, m31, m32, m33,
-    ] = transformMatrix;
-
-    // TODO: calculate the derivative of a 4x4 matrix
   }
 }
 
