@@ -4,7 +4,7 @@ import getLineSegmentIntersectionsIndexes from './getLineSegmentIntersectionsInd
 import containsPoint from './containsPoint';
 import getNormal2 from './getNormal2';
 import { glMatrix, vec3 } from 'gl-matrix';
-import getLineSegmentsIntersection from './getLineSegmentsIntersection';
+import getLineIntersection from './getLinesIntersection';
 
 enum PolylinePointType {
   Vertex,
@@ -111,7 +111,7 @@ function getSourceAndTargetPointsList(
       // Examples:
       //   - [(0, 0), (1, 1)] x [(1, 1), (1, 2)]
       //   - [(0, 1), (2, 1)] x [(1, 1), (1, 2)]
-      const intersectionCoordinate = getLineSegmentsIntersection(
+      const intersectionCoordinate = getLineIntersection(
         p1,
         q1,
         p2,

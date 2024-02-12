@@ -1,4 +1,5 @@
-import { Types } from '@cornerstonejs/core';
+import type { Types } from '@cornerstonejs/core';
+import * as mathLine from '../line';
 
 // ATTENTION: this is an internal function and it should not be added to "polyline"
 // namespace because there is another one from lineSegment.intersectLine that also
@@ -13,6 +14,8 @@ import { Types } from '@cornerstonejs/core';
 // This function must replace `lineSegment.intersectLine` but it requires some
 // tests first
 
+const PARALLEL_LINES_TOLERANCE = 1e-2;
+
 /**
  * Gets the intersection between the line segments (`p1`,`q1`) and (`p2`,`q2`)
  *
@@ -25,12 +28,59 @@ export default function getLineSegmentsIntersection(
   p2: Types.Point2,
   q2: Types.Point2
 ): Types.Point2 {
+  // No Math.min/max calls for better performance.
+  const line1AABB = [
+    p1[0] < q1[0] ? p1[0] : q1[0], // 0: minX
+    p1[0] > q1[0] ? p1[0] : q1[0], // 1: maxX
+    p1[1] < q1[1] ? p1[1] : q1[1], // 2: minY
+    p1[1] > q1[1] ? p1[1] : q1[1], // 3: maxY
+  ];
+
+  // No Math.min/max calls for better performance.
+  const line2AABB = [
+    p2[0] < q2[0] ? p2[0] : q2[0], // 0: minX
+    p2[0] > q2[0] ? p2[0] : q2[0], // 1: maxX
+    p2[1] < q2[1] ? p2[1] : q2[1], // 2: minY
+    p2[1] > q2[1] ? p2[1] : q2[1], // 3: maxY
+  ];
+
+  const aabbIntersects =
+    line1AABB[0] <= line2AABB[1] && // minX1 <= maxX2
+    line1AABB[1] >= line2AABB[0] && // maxX1 >= minX2
+    line1AABB[2] <= line2AABB[3] && // minY1 <= maxY2
+    line1AABB[3] >= line2AABB[2]; // maxY1 >= minY2
+
+  if (!aabbIntersects) {
+    return;
+  }
+
   const diffQ1P1 = [q1[0] - p1[0], q1[1] - p1[1]];
   const diffQ2P2 = [q2[0] - p2[0], q2[1] - p2[1]];
   const denominator = diffQ2P2[1] * diffQ1P1[0] - diffQ2P2[0] * diffQ1P1[1];
+  const absDenominator = denominator >= 0 ? denominator : -denominator;
 
-  if (denominator == 0) {
-    return;
+  // The line segments are parallel when denominator is equal to 0
+  if (absDenominator < PARALLEL_LINES_TOLERANCE) {
+    // Three tests are enough to know if the lines overlap
+    const overlap =
+      mathLine.containsPoint(p1, q1, p2) ||
+      mathLine.containsPoint(p1, q1, q2) ||
+      mathLine.containsPoint(p2, q2, p1);
+
+    if (!overlap) {
+      return;
+    }
+
+    // min/max seems to be inverted but that is correct because it is looking
+    // for the intersection range. No Math.min/max calls for better performance.
+    const minX = line1AABB[0] > line2AABB[0] ? line1AABB[0] : line2AABB[0];
+    const maxX = line1AABB[1] < line2AABB[1] ? line1AABB[1] : line2AABB[1];
+    const minY = line1AABB[2] > line2AABB[2] ? line1AABB[2] : line2AABB[2];
+    const maxY = line1AABB[3] < line2AABB[3] ? line1AABB[3] : line2AABB[3];
+    const midX = (minX + maxX) * 0.5;
+    const midY = (minY + maxY) * 0.5;
+
+    return [midX, midY];
   }
 
   let a = p1[1] - p2[1];
