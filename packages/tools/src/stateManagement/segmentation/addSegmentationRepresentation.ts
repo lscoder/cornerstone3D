@@ -40,6 +40,7 @@ async function addSegmentationRepresentation(
     segmentationId,
     segmentationRepresentationUID,
     type: representationInput.type,
+    // isParametricMap: representationInput.isParametricMap,
     segmentsHidden,
     colorLUTIndex: colorLUTIndexToUse,
     active: true,

@@ -7,6 +7,7 @@ enum SegmentationRepresentations {
   Labelmap = 'LABELMAP',
   Contour = 'CONTOUR',
   Surface = 'SURFACE',
+  ParametricMap = 'PARAMETRICMAP',
 }
 
 export default SegmentationRepresentations;
