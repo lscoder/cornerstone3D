@@ -1433,6 +1433,7 @@ class CrosshairsTool extends AnnotationTool {
     data.handles.rotationPoints = newRtpoints;
     data.handles.slabThicknessPoints = newStpoints;
 
+    debugger;
     if (this.configuration.viewportIndicators) {
       const { viewportIndicatorsConfig } = this.configuration;
 

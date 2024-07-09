@@ -49,10 +49,8 @@ const { MouseBindings } = csToolsEnums;
 
 const { wadouri } = cornerstoneDicomImageLoader;
 
-const { adaptersSEG, adaptersPMAP, helpers } = cornerstoneAdapters;
-const { Cornerstone3D: Cornerstone3DSEG } = adaptersSEG;
-const { Cornerstone3D: Cornerstone3DPMAP } = adaptersPMAP;
-// console.log(">>>>> Cornerstone3DPMAP:", Cornerstone3DPMAP);
+const { adaptersSEG, helpers } = cornerstoneAdapters;
+const { Cornerstone3D } = adaptersSEG;
 const { downloadDICOMData } = helpers;
 
 //
@@ -199,6 +197,13 @@ async function loadDicom(imageIds: string[]) {
         imageIds
     });
 
+    // Generate segmentation id
+    const newSegmentationId = "MY_SEGMENTATION_ID:" + csUtilities.uuidv4();
+    // Add some segmentations based on the source data volume
+    await addSegmentationsToState(newSegmentationId);
+    //
+    updateSegmentationDropdown();
+
     //
     toolGroup.addViewport(viewportIds[0], renderingEngineId);
     toolGroup.addViewport(viewportIds[1], renderingEngineId);
@@ -210,106 +215,8 @@ async function loadDicom(imageIds: string[]) {
     // Set volumes on the viewports
     await setVolumesForViewports(renderingEngine, [{ volumeId }], viewportIds);
 
-    // Generate segmentation id
-    const newSegmentationId = "MY_SEGMENTATION_ID:" + csUtilities.uuidv4();
-    // Add some segmentations based on the source data volume
-    await addSegmentationsToState(newSegmentationId);
-    //
-    updateSegmentationDropdown();
-
     // Render the image
     renderingEngine.renderViewports(viewportIds);
-}
-
-async function fetchParametricMap() {
-    if (!volumeId) {
-        return;
-    }
-
-    const configPMap = dev.getConfig.fetchParametricMap;
-
-    if (!configPMap) {
-        alert("Parametric map is not available");
-        return;
-    }
-
-    const client = new api.DICOMwebClient({
-        url: configPMap.wadoRsRoot
-    });
-
-    const arrayBuffer = await client.retrieveInstance({
-        studyInstanceUID: configPMap.StudyInstanceUID,
-        seriesInstanceUID: configPMap.SeriesInstanceUID,
-        sopInstanceUID: configPMap.SOPInstanceUID
-    });
-
-    await loadParametricMap(arrayBuffer);
-}
-
-async function loadParametricMap(arrayBuffer: ArrayBuffer) {
-    const newParamMapId = "LOAD_PARAMETRICMAP_ID:" + csUtilities.uuidv4();
-    const { pixelData } =
-        await Cornerstone3DPMAP.ParametricMap.generateToolState(
-            imageIds,
-            arrayBuffer,
-            metaData
-        );
-
-    const derivedVolume = await addParametricMapsToState(
-        newParamMapId,
-        "Int16Array" // pixelData.constructor.name
-    );
-
-    derivedVolume.getScalarData().set(pixelData);
-
-    // TODO: [DEBUG] DELETE
-    const derivedVolumeScalarData = derivedVolume.getScalarData();
-    for (let i = 0, len = pixelData.length; i < len; i++) {
-        // derivedVolumeScalarData[i] = Math.round(pixelData[i] * 10);
-        derivedVolumeScalarData[i] = pixelData[i] > 0.9 ? 1 : 0;
-    }
-    window.derivedVolumeScalarData = derivedVolumeScalarData;
-}
-
-async function addParametricMapsToState(newParamMapId, TypedArrayConstructor) {
-    // Create a parametric map of the same resolution as the source data
-    const derivedVolume = await volumeLoader.createAndCacheDerivedVolume(
-        volumeId,
-        {
-            volumeId: newParamMapId,
-            targetBuffer: {
-                type: TypedArrayConstructor
-            }
-        }
-    );
-
-    // Add the segmentations to state
-    csToolsSegmentation.addSegmentations([
-        {
-            segmentationId: newParamMapId,
-            representation: {
-                // The type of segmentation
-                type: csToolsEnums.SegmentationRepresentations.Labelmap,
-                // The actual segmentation data, in the case of labelmap this is a
-                // reference to the source volume of the segmentation.
-                data: {
-                    volumeId: newParamMapId,
-                    isParametricMap: true
-                }
-            }
-        }
-    ]);
-
-    // Add the segmentation representation to the toolgroup
-    await csToolsSegmentation.addSegmentationRepresentations(toolGroupId, [
-        {
-            segmentationId: newParamMapId,
-            type: csToolsEnums.SegmentationRepresentations.Labelmap
-            // isParametricMap: true
-        }
-    ]);
-
-    return derivedVolume;
 }
 
 async function fetchSegmentation() {
@@ -371,7 +278,7 @@ async function loadSegmentation(arrayBuffer: ArrayBuffer) {
 
     //
     const generateToolState =
-        await Cornerstone3DSEG.Segmentation.generateToolState(
+        await Cornerstone3D.Segmentation.generateToolState(
             imageIds,
             arrayBuffer,
             metaData
@@ -413,10 +320,9 @@ async function exportSegmentation() {
     );
 
     //
-    const labelmapData =
-        Cornerstone3DSEG.Segmentation.generateLabelMaps2DFrom3D(
-            cacheSegmentationVolume
-        );
+    const labelmapData = Cornerstone3D.Segmentation.generateLabelMaps2DFrom3D(
+        cacheSegmentationVolume
+    );
 
     // Generate fake metadata as an example
     labelmapData.metadata = [];
@@ -432,7 +338,7 @@ async function exportSegmentation() {
     });
 
     const generatedSegmentation =
-        Cornerstone3DSEG.Segmentation.generateSegmentation(
+        Cornerstone3D.Segmentation.generateSegmentation(
             csImages,
             labelmapData,
             metaData
@@ -510,16 +416,6 @@ addButtonToToolbar({
         marginRight: "5px"
     },
     onClick: fetchSegmentation,
-    container: group1
-});
-
-addButtonToToolbar({
-    id: "LOAD_PARAMETRICMAP",
-    title: "Load Parametric Map",
-    style: {
-        marginRight: "5px"
-    },
-    onClick: fetchParametricMap,
     container: group1
 });
 
