@@ -1,5 +1,33 @@
 const dicomMap = new Map();
 
+// MED_LYMPH_001
+dicomMap.set("61.7.110976287009623783394893059131426578073", {
+    fetchDicom: {
+        StudyInstanceUID: "61.7.110976287009623783394893059131426578073",
+        SeriesInstanceUID: "61.7.186195007319014217251157852440977945371",
+        wadoRsRoot: "http://localhost/dicom-web/"
+        // wadoRsRoot: "http://localhost:5000/dicomweb"
+    },
+    fetchSegmentation: {
+        StudyInstanceUID: "61.7.110976287009623783394893059131426578073",
+        SeriesInstanceUID:
+            "1.2.276.0.7230010.3.1.3.296485376.2527.1716206360.73915",
+        SOPInstanceUID:
+            "1.2.276.0.7230010.3.1.4.296485376.2527.1716206360.73916",
+        wadoRsRoot: "http://localhost/dicom-web/"
+        // wadoRsRoot: "http://localhost:5000/dicomweb"
+    },
+    fetchParametricMap: {
+        StudyInstanceUID: "61.7.110976287009623783394893059131426578073",
+        SeriesInstanceUID:
+            "1.2.276.0.7230010.3.1.3.296485376.2553.1716206362.621624",
+        SOPInstanceUID:
+            "1.2.276.0.7230010.3.1.4.296485376.2553.1716206362.621625",
+        wadoRsRoot: "http://localhost/dicom-web/"
+        // wadoRsRoot: "http://localhost:5000/dicomweb"
+    }
+});
+
 dicomMap.set(
     "1.3.6.1.4.1.14519.5.2.1.256467663913010332776401703474716742458",
     {

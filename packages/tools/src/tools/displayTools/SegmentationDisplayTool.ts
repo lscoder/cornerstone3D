@@ -6,7 +6,10 @@ import {
 import Representations from '../../enums/SegmentationRepresentations';
 import { config as segmentationConfig } from '../../stateManagement/segmentation';
 import { setSegmentationVisibility } from '../../stateManagement/segmentation/config/segmentationVisibility';
-import { getSegmentationRepresentations } from '../../stateManagement/segmentation/segmentationState';
+import {
+  getSegmentation,
+  getSegmentationRepresentations,
+} from '../../stateManagement/segmentation/segmentationState';
 import { getToolGroup } from '../../store/ToolGroupManager';
 import { PublicToolProps, ToolProps } from '../../types';
 import { BaseTool } from '../base';
@@ -18,6 +21,7 @@ import {
 import { surfaceDisplay } from './Surface';
 import { contourDisplay } from './Contour';
 import { labelmapDisplay } from './Labelmap';
+import { parametricMapDisplay } from './ParametricMap';
 import SegmentationRepresentations from '../../enums/SegmentationRepresentations';
 import { addTool, state } from '../../store';
 import PlanarFreehandContourSegmentationTool from '../annotation/PlanarFreehandContourSegmentationTool';
@@ -145,6 +149,9 @@ class SegmentationDisplayTool extends BaseTool {
     // Render each segmentationData, in each viewport in the toolGroup
     const segmentationRenderList = toolGroupSegmentationRepresentations.map(
       (representation: ToolGroupSpecificRepresentation) => {
+        const segmentation = getSegmentation(representation.segmentationId);
+        const segmentationData =
+          segmentation.representationData[representation.type];
         const config = this._getMergedRepresentationsConfig(toolGroupId);
 
         const viewportsRenderList = [];
@@ -153,6 +160,7 @@ class SegmentationDisplayTool extends BaseTool {
           [Representations.Labelmap]: labelmapDisplay,
           [Representations.Contour]: contourDisplay,
           [Representations.Surface]: surfaceDisplay,
+          [Representations.ParametricMap]: parametricMapDisplay,
         };
 
         if (representation.type === SegmentationRepresentations.Contour) {
@@ -161,7 +169,11 @@ class SegmentationDisplayTool extends BaseTool {
           this.addPlanarFreeHandToolIfAbsent(toolGroupId);
         }
 
-        const display = renderers[representation.type];
+        let display = renderers[representation.type];
+
+        if (segmentationData.isParametricMap) {
+          display = renderers[Representations.ParametricMap];
+        }
 
         for (const viewport of toolGroupViewports) {
           const renderedViewport = display.render(
